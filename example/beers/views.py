@@ -12,6 +12,10 @@ from .documents import Beer, Brewery
 # ============================================================
 
 
+MAX_LOGIN_ATTEMPTS = 5
+LOGIN_COOLDOWN_SECONDS = 300  # 5 minutes
+
+
 def login_view(request):
     if request.user.is_authenticated:
         return redirect("beers:home")
@@ -19,18 +23,41 @@ def login_view(request):
     if request.method == "POST":
         from django_cb.contrib.auth.backend import CouchbaseAuthBackend
 
+        # Rate limiting via session
+        attempts = request.session.get("_login_attempts", 0)
+        import time
+
+        lockout_until = request.session.get("_login_lockout", 0)
+        if lockout_until and time.time() < lockout_until:
+            remaining = int(lockout_until - time.time())
+            messages.error(request, f"Too many failed attempts. Try again in {remaining} seconds.")
+            return render(request, "beers/login.html")
+
         username = request.POST.get("username", "").strip()
         password = request.POST.get("password", "")
         backend = CouchbaseAuthBackend()
         user = backend.authenticate(request, username=username, password=password)
         if user is not None:
-            # Manually set session
+            # Clear rate limit state and set session
+            request.session.pop("_login_attempts", None)
+            request.session.pop("_login_lockout", None)
             request.session["_auth_user_id"] = user.pk
-            request.session["_auth_user_backend"] = "django_cb.contrib.auth.backend.CouchbaseAuthBackend"
+            request.session["_auth_user_backend"] = (
+                "django_cb.contrib.auth.backend.CouchbaseAuthBackend"
+            )
             messages.success(request, f"Welcome back, {user.get_short_name()}!")
             return redirect("beers:home")
         else:
-            messages.error(request, "Invalid username or password.")
+            attempts += 1
+            request.session["_login_attempts"] = attempts
+            if attempts >= MAX_LOGIN_ATTEMPTS:
+                request.session["_login_lockout"] = time.time() + LOGIN_COOLDOWN_SECONDS
+                messages.error(
+                    request,
+                    f"Too many failed attempts. Account locked for {LOGIN_COOLDOWN_SECONDS // 60} minutes.",
+                )
+            else:
+                messages.error(request, "Invalid username or password.")
 
     return render(request, "beers/login.html")
 
