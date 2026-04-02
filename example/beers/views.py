@@ -447,6 +447,9 @@ def beer_edit(request, beer_id):
         beer = Beer.objects.get(pk=beer_id)
     except Beer.DoesNotExist:
         raise Http404("Beer not found")
+    except Exception as e:
+        messages.error(request, f"Failed to load beer: {e}")
+        return redirect("beers:beer_list")
 
     if request.method == "POST":
         try:
@@ -464,12 +467,17 @@ def beer_edit(request, beer_id):
         except Exception as e:
             messages.error(request, f"Failed to save: {e}")
 
-    return render(request, "beers/beer_form.html", {
-        "action": "Edit",
-        "beer": beer,
-        "beer_id": beer_id,
-        "cb_user": request.cb_user,
-    })
+    try:
+        return render(request, "beers/beer_form.html", {
+            "action": "Edit",
+            "beer": beer,
+            "beer_id": beer_id,
+            "cb_user": request.cb_user,
+        })
+    except Exception as e:
+        from django.http import HttpResponse
+
+        return HttpResponse(f"Template render error: {type(e).__name__}: {e}", status=500)
 
 
 @_login_required
