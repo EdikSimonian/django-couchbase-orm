@@ -2,7 +2,7 @@
 
 A Django-style ORM for Couchbase. Define models, run queries, and manage documents using familiar Django patterns with Couchbase Server as the backend.
 
-**Live Demo:** [django-cb-production.up.railway.app](https://django-cb-production.up.railway.app) | **PyPI:** [django-couchbase-orm](https://pypi.org/project/django-couchbase-orm/)
+**Live Demo:** [django-couchbase-orm-production.up.railway.app](https://django-couchbase-orm-production.up.railway.app) | **PyPI:** [django-couchbase-orm](https://pypi.org/project/django-couchbase-orm/)
 
 Works **alongside** Django's built-in ORM — use `django.db.models.Model` for relational data and `django_couchbase_orm.Document` for Couchbase data in the same project. Or go fully Couchbase with the included session and auth backends.
 
