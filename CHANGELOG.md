@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.5.0 (2026-04-02)
+
+### New Features
+
+- **Integration tests**: 39 tests against a real Couchbase instance (Docker) covering CRUD, QuerySet, aggregation, pagination, compound fields, references, select_related, signals, sub-document ops, timestamps, bulk operations
+- **CI integration testing**: Couchbase Docker service in GitHub Actions with N1QL readiness checks
+- **Coverage badges**: Auto-updating coverage badge via GitHub Gist + shields.io
+- **README badges**: CI status, PyPI version, Python versions, coverage, license
+
+### Fixes
+
+- Fixed `subdoc.get()` and `subdoc.count()` to use `result.value[0]["value"]` for type-preserving access (discovered by integration tests)
+- Fixed CI N1QL service readiness — added polling loop before running integration tests
+- Fixed settings.py `DEBUG` ordering before `SECRET_KEY` check
+
+### Stats
+
+- 596 tests (557 unit + 39 integration), 91% coverage
+- All CI jobs green: lint, test (Python 3.10-3.13), integration, build
+
 ## 0.4.0 (2026-04-02)
 
 ### New Features

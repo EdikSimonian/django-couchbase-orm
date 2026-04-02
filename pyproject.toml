@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "django-couchbase-orm"
-version = "0.4.0"
+version = "0.5.0"
 description = "Django-style ORM for Couchbase — define models, run queries, and manage documents using familiar Django patterns."
 readme = "README.md"
 license = "Apache-2.0"
