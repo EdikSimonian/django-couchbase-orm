@@ -6,7 +6,7 @@ without relying on Django's ORM or permissions framework.
 
 from __future__ import annotations
 
-from django.contrib.auth.hashers import check_password, make_password
+from django.contrib.auth.hashers import check_password, is_password_usable, make_password
 
 from django_cb.document import Document
 from django_cb.fields.datetime import DateTimeField
@@ -67,7 +67,7 @@ class User(Document):
         self._data["password"] = make_password(None)
 
     def has_usable_password(self) -> bool:
-        return self.password is not None and not self.password.startswith("!")
+        return is_password_usable(self.password)
 
     def __str__(self) -> str:
         return self.username or self.pk

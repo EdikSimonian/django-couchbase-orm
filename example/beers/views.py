@@ -1,3 +1,7 @@
+import math
+import re
+import time
+
 from django.contrib import messages
 from django.http import Http404
 from django.shortcuts import redirect, render
@@ -5,6 +9,62 @@ from django.shortcuts import redirect, render
 from django_cb.queryset.q import Q
 
 from .documents import Beer, Brewery
+
+
+# ============================================================
+# Validation helpers
+# ============================================================
+
+# Only allow alphanumeric, underscores, hyphens for document IDs
+_VALID_DOC_ID = re.compile(r"^[a-z0-9][a-z0-9_\-]{0,127}$")
+
+# Reserved prefixes that user-created documents must not use
+_RESERVED_PREFIXES = ("session:", "user::", "_type", "_system")
+
+
+def _validate_doc_id(raw_id: str, doc_prefix: str) -> str:
+    """Validate and namespace a user-supplied document ID."""
+    cleaned = raw_id.strip().replace(" ", "_").lower()
+    if not cleaned:
+        raise ValueError("Document ID is required.")
+    prefixed = f"{doc_prefix}{cleaned}"
+    if not _VALID_DOC_ID.match(cleaned):
+        raise ValueError("ID must be alphanumeric with underscores/hyphens, max 128 chars.")
+    for prefix in _RESERVED_PREFIXES:
+        if prefixed.startswith(prefix):
+            raise ValueError(f"ID must not start with reserved prefix '{prefix}'.")
+    return prefixed
+
+
+def _safe_page(request) -> int:
+    """Parse and validate page parameter."""
+    try:
+        page = max(1, int(request.GET.get("page", 1)))
+    except (ValueError, TypeError):
+        page = 1
+    return min(page, 10000)
+
+
+def _safe_float(value: str) -> float | None:
+    """Parse a float from user input, rejecting NaN/Inf."""
+    if not value or not value.strip():
+        return None
+    try:
+        f = float(value)
+    except (ValueError, TypeError):
+        return None
+    if math.isnan(f) or math.isinf(f):
+        return None
+    return f
+
+
+def _validate_url(url: str | None) -> str | None:
+    """Ensure URL uses http/https scheme."""
+    if not url:
+        return None
+    if not url.startswith(("http://", "https://")):
+        return None
+    return url
 
 
 # ============================================================
@@ -25,8 +85,6 @@ def login_view(request):
 
         # Rate limiting via session
         attempts = request.session.get("_login_attempts", 0)
-        import time
-
         lockout_until = request.session.get("_login_lockout", 0)
         if lockout_until and time.time() < lockout_until:
             remaining = int(lockout_until - time.time())
@@ -38,7 +96,8 @@ def login_view(request):
         backend = CouchbaseAuthBackend()
         user = backend.authenticate(request, username=username, password=password)
         if user is not None:
-            # Clear rate limit state and set session
+            # Cycle the session key to prevent session fixation
+            request.session.cycle_key()
             request.session.pop("_login_attempts", None)
             request.session.pop("_login_lockout", None)
             request.session["_auth_user_id"] = user.pk
@@ -74,6 +133,7 @@ def _get_current_user(request):
     if not user_id:
         return None
     from django_cb.contrib.auth.models import User
+
     try:
         return User.objects.get(pk=user_id)
     except User.DoesNotExist:
@@ -82,6 +142,7 @@ def _get_current_user(request):
 
 def _login_required(view_func):
     """Decorator that requires Couchbase auth login."""
+
     def wrapper(request, *args, **kwargs):
         user = _get_current_user(request)
         if user is None:
@@ -89,6 +150,7 @@ def _login_required(view_func):
             return redirect("beers:login")
         request.cb_user = user
         return view_func(request, *args, **kwargs)
+
     return wrapper
 
 
@@ -112,8 +174,8 @@ def home(request):
 
 
 def brewery_list(request):
-    search = request.GET.get("q", "").strip()
-    page = int(request.GET.get("page", 1))
+    search = request.GET.get("q", "").strip()[:200]
+    page = _safe_page(request)
     per_page = 20
 
     qs = Brewery.objects.order_by("name")
@@ -121,7 +183,8 @@ def brewery_list(request):
         qs = qs.filter(name__icontains=search)
 
     total = qs.count()
-    total_pages = (total + per_page - 1) // per_page
+    total_pages = max(1, (total + per_page - 1) // per_page)
+    page = min(page, total_pages)
     breweries = list(qs[(page - 1) * per_page : page * per_page])
 
     return render(request, "beers/brewery_list.html", {
@@ -153,9 +216,9 @@ def brewery_detail(request, brewery_id):
 
 
 def beer_list(request):
-    search = request.GET.get("q", "").strip()
-    style = request.GET.get("style", "").strip()
-    page = int(request.GET.get("page", 1))
+    search = request.GET.get("q", "").strip()[:200]
+    style = request.GET.get("style", "").strip()[:200]
+    page = _safe_page(request)
     per_page = 20
 
     qs = Beer.objects.order_by("name")
@@ -165,19 +228,25 @@ def beer_list(request):
         qs = qs.filter(style=style)
 
     total = qs.count()
-    total_pages = (total + per_page - 1) // per_page
+    total_pages = max(1, (total + per_page - 1) // per_page)
+    page = min(page, total_pages)
     beers = list(qs[(page - 1) * per_page : page * per_page])
 
-    styles = Beer.objects.raw(
-        "SELECT DISTINCT d.style FROM `beer-sample`.`_default`.`_default` d "
-        "WHERE d.type = 'beer' AND d.style IS NOT NULL ORDER BY d.style"
-    )
+    # Get styles using QuerySet instead of hardcoded raw query
+    style_rows = Beer.objects.values("style").order_by("style")
+    seen = set()
+    styles = []
+    for row in style_rows:
+        s = row.get("style")
+        if s and s not in seen:
+            seen.add(s)
+            styles.append(s)
 
     return render(request, "beers/beer_list.html", {
         "beers": beers,
         "search": search,
         "selected_style": style,
-        "styles": [s["style"] for s in styles],
+        "styles": styles,
         "page": page,
         "total_pages": total_pages,
         "total": total,
@@ -216,15 +285,23 @@ def beer_detail(request, beer_id):
 @_login_required
 def brewery_create(request):
     if request.method == "POST":
+        try:
+            doc_id = _validate_doc_id(request.POST.get("id", ""), "brewery::")
+        except ValueError as e:
+            messages.error(request, str(e))
+            return render(request, "beers/brewery_form.html", {
+                "action": "Create", "cb_user": request.cb_user,
+            })
+
         brewery = Brewery(
-            _id=request.POST.get("id", "").strip().replace(" ", "_").lower(),
+            _id=doc_id,
             name=request.POST.get("name", "").strip(),
             description=request.POST.get("description", "").strip() or None,
             city=request.POST.get("city", "").strip() or None,
             state=request.POST.get("state", "").strip() or None,
             country=request.POST.get("country", "").strip() or None,
             phone=request.POST.get("phone", "").strip() or None,
-            website=request.POST.get("website", "").strip() or None,
+            website=_validate_url(request.POST.get("website", "").strip()),
             code=request.POST.get("code", "").strip() or None,
         )
         brewery.save()
@@ -251,7 +328,7 @@ def brewery_edit(request, brewery_id):
         brewery._data["state"] = request.POST.get("state", "").strip() or None
         brewery._data["country"] = request.POST.get("country", "").strip() or None
         brewery._data["phone"] = request.POST.get("phone", "").strip() or None
-        brewery._data["website"] = request.POST.get("website", "").strip() or None
+        brewery._data["website"] = _validate_url(request.POST.get("website", "").strip())
         brewery._data["code"] = request.POST.get("code", "").strip() or None
         brewery.save()
         messages.success(request, f"Brewery '{brewery.name}' updated.")
@@ -292,13 +369,21 @@ def beer_create(request):
     brewery_id = request.GET.get("brewery", "")
 
     if request.method == "POST":
+        try:
+            doc_id = _validate_doc_id(request.POST.get("id", ""), "beer::")
+        except ValueError as e:
+            messages.error(request, str(e))
+            return render(request, "beers/beer_form.html", {
+                "action": "Create", "brewery_id": brewery_id, "cb_user": request.cb_user,
+            })
+
         beer = Beer(
-            _id=request.POST.get("id", "").strip().replace(" ", "_").lower(),
+            _id=doc_id,
             name=request.POST.get("name", "").strip(),
             description=request.POST.get("description", "").strip() or None,
-            abv=float(request.POST["abv"]) if request.POST.get("abv") else None,
-            ibu=float(request.POST["ibu"]) if request.POST.get("ibu") else None,
-            srm=float(request.POST["srm"]) if request.POST.get("srm") else None,
+            abv=_safe_float(request.POST.get("abv", "")),
+            ibu=_safe_float(request.POST.get("ibu", "")),
+            srm=_safe_float(request.POST.get("srm", "")),
             style=request.POST.get("style", "").strip() or None,
             category=request.POST.get("category", "").strip() or None,
             brewery_id=request.POST.get("brewery_id", "").strip() or None,
@@ -324,9 +409,9 @@ def beer_edit(request, beer_id):
     if request.method == "POST":
         beer._data["name"] = request.POST.get("name", "").strip()
         beer._data["description"] = request.POST.get("description", "").strip() or None
-        beer._data["abv"] = float(request.POST["abv"]) if request.POST.get("abv") else None
-        beer._data["ibu"] = float(request.POST["ibu"]) if request.POST.get("ibu") else None
-        beer._data["srm"] = float(request.POST["srm"]) if request.POST.get("srm") else None
+        beer._data["abv"] = _safe_float(request.POST.get("abv", ""))
+        beer._data["ibu"] = _safe_float(request.POST.get("ibu", ""))
+        beer._data["srm"] = _safe_float(request.POST.get("srm", ""))
         beer._data["style"] = request.POST.get("style", "").strip() or None
         beer._data["category"] = request.POST.get("category", "").strip() or None
         beer._data["brewery_id"] = request.POST.get("brewery_id", "").strip() or None

@@ -2,7 +2,17 @@
 
 from __future__ import annotations
 
+import re
 from typing import Any
+
+_SAFE_IDENTIFIER = re.compile(r"^[a-zA-Z_][a-zA-Z0-9_]*$")
+
+
+def _validate_identifier(name: str) -> str:
+    """Validate a field/identifier name to prevent backtick injection."""
+    if not _SAFE_IDENTIFIER.match(name):
+        raise ValueError(f"Invalid identifier: {name!r}. Must be alphanumeric with underscores.")
+    return name
 
 
 class N1QLQuery:
@@ -46,7 +56,7 @@ class N1QLQuery:
 
     def select(self, *fields: str) -> N1QLQuery:
         """Set specific fields to select. If not called, selects all (*)."""
-        self._select_fields = list(fields)
+        self._select_fields = [_validate_identifier(f) for f in fields]
         return self
 
     def select_count(self) -> N1QLQuery:
@@ -77,6 +87,8 @@ class N1QLQuery:
 
     def order_by(self, *fields: str) -> N1QLQuery:
         """Set ORDER BY fields. Prefix with '-' for DESC."""
+        for f in fields:
+            _validate_identifier(f.lstrip("-"))
         self._order_by = list(fields)
         return self
 
@@ -166,6 +178,7 @@ class N1QLQuery:
         """
         set_clauses = []
         for field, value in updates.items():
+            _validate_identifier(field)
             placeholder = self.add_param(value)
             set_clauses.append(f"d.`{field}` = {placeholder}")
 

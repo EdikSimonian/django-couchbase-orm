@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from django_cb.query.n1ql import N1QLQuery
+from django_cb.query.n1ql import N1QLQuery, _validate_identifier
 
 # Map of lookup suffix -> handler function
 # Each handler takes (query, db_field, value) and returns a WHERE clause string
@@ -54,6 +54,7 @@ def apply_lookup(query: N1QLQuery, field_expr: str, value: Any) -> str:
         A WHERE clause fragment string.
     """
     field_name, lookup = parse_lookup(field_expr)
+    _validate_identifier(field_name)
     if lookup not in LOOKUP_TRANSFORMS:
         raise ValueError(f"Unknown lookup type: '{lookup}'")
     return LOOKUP_TRANSFORMS[lookup](query, field_name, value)

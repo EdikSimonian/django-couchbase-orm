@@ -10,7 +10,12 @@ from __future__ import annotations
 
 import logging
 
+from django.contrib.auth.hashers import check_password, make_password
+
 logger = logging.getLogger(__name__)
+
+# Pre-computed unusable hash for constant-time dummy checks
+_DUMMY_HASH = make_password(None)
 
 
 class CouchbaseAuthBackend:
@@ -24,6 +29,7 @@ class CouchbaseAuthBackend:
         """Authenticate a user by username/email and password.
 
         Returns the User instance if credentials are valid, None otherwise.
+        Runs the password hasher on every code path to prevent timing attacks.
         """
         from django_cb.contrib.auth.models import User
 
@@ -38,12 +44,15 @@ class CouchbaseAuthBackend:
             try:
                 user = User.get_by_email(username)
             except User.DoesNotExist:
-                # Run the default password hasher to prevent timing attacks
-                User().check_password(password)
-                return None
+                pass
 
-        if user and user.check_password(password) and user.is_active:
-            return user
+        # Always run the hasher — constant time regardless of user existence
+        if user is not None:
+            password_valid = check_password(password, user.password or _DUMMY_HASH)
+            if password_valid and user.is_active:
+                return user
+        else:
+            check_password(password, _DUMMY_HASH)
 
         return None
 

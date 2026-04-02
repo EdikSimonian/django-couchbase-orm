@@ -55,7 +55,7 @@ class SessionStore(SessionBase):
             self._session_key = None
             return {}
         except Exception:
-            logger.exception("Failed to load session %s", self.session_key)
+            logger.exception("Failed to load session (key redacted)")
             self._session_key = None
             return {}
 
@@ -127,7 +127,7 @@ class SessionStore(SessionBase):
         except DocumentNotFoundException:
             pass
         except Exception:
-            logger.exception("Failed to delete session %s", session_key)
+            logger.exception("Failed to delete session (key redacted)")
 
     @classmethod
     def clear_expired(cls):

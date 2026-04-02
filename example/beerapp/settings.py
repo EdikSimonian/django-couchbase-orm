@@ -29,7 +29,12 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/6.0/howto/deployment/checklist/
 
-SECRET_KEY = os.environ.get("DJANGO_SECRET_KEY", "django-insecure-!u(=tp-)oq)q+6$ps^m(choa4h6mpt^td26(t*13lgj@9uf#nw")
+SECRET_KEY = os.environ.get("DJANGO_SECRET_KEY")
+if not SECRET_KEY:
+    if DEBUG:
+        SECRET_KEY = "django-insecure-dev-only-key-do-not-use-in-production"
+    else:
+        raise ValueError("DJANGO_SECRET_KEY environment variable is required in production.")
 
 DEBUG = os.environ.get("DJANGO_DEBUG", "True").lower() in ("true", "1", "yes")
 
@@ -148,8 +153,8 @@ STORAGES = {
 COUCHBASE = {
     "default": {
         "CONNECTION_STRING": os.environ.get("CB_CONNECTION_STRING", "couchbase://localhost"),
-        "USERNAME": os.environ.get("CB_USERNAME", "Administrator"),
-        "PASSWORD": os.environ.get("CB_PASSWORD", "password"),
+        "USERNAME": os.environ.get("CB_USERNAME", ""),
+        "PASSWORD": os.environ.get("CB_PASSWORD", ""),
         "BUCKET": os.environ.get("CB_BUCKET", "beer-sample"),
         "SCOPE": os.environ.get("CB_SCOPE", "_default"),
         "OPTIONS": {
