@@ -65,7 +65,7 @@ def get_cluster(alias: str = "default"):
 
         cluster = Cluster.connect(config["CONNECTION_STRING"], cluster_opts)
 
-        wait_timeout = config.get("OPTIONS", {}).get("wait_until_ready_timeout", 10)
+        wait_timeout = config.get("OPTIONS", {}).get("wait_until_ready_timeout", 20)
         cluster.wait_until_ready(timedelta(seconds=wait_timeout))
 
         _connections[cache_key] = cluster

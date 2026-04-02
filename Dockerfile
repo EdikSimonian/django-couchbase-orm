@@ -2,9 +2,10 @@ FROM python:3.12-slim
 
 WORKDIR /app
 
-# Install system dependencies for couchbase SDK
+# Install system dependencies for couchbase SDK + TLS certificates
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential cmake libssl-dev \
+    build-essential cmake libssl-dev ca-certificates \
+    && update-ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy everything
