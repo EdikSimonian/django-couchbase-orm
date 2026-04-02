@@ -76,8 +76,7 @@ class BaseField:
             choice_values = [c[0] if isinstance(c, (list, tuple)) else c for c in self.choices]
             if value not in choice_values:
                 raise ValidationError(
-                    f"Value '{value}' is not a valid choice for field '{self.name}'. "
-                    f"Valid choices: {choice_values}"
+                    f"Value '{value}' is not a valid choice for field '{self.name}'. Valid choices: {choice_values}"
                 )
 
         for validator in self.validators:

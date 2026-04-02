@@ -41,14 +41,13 @@ class ReferenceField(BaseField):
 
         # Resolve string reference from the document registry
         from django_cb.document import get_document_registry
+
         registry = get_document_registry()
         if self.document_type in registry:
             self._resolved_type = registry[self.document_type]
             return self._resolved_type
 
-        raise ValidationError(
-            f"Field '{self.name}': Could not resolve document type '{self.document_type}'."
-        )
+        raise ValidationError(f"Field '{self.name}': Could not resolve document type '{self.document_type}'.")
 
     def to_python(self, value: Any) -> str | None:
         """Returns the stored key string. Use dereference() to load the document."""
@@ -72,9 +71,7 @@ class ReferenceField(BaseField):
         if hasattr(value, "pk"):
             return
         if not isinstance(value, str):
-            raise ValidationError(
-                f"Field '{self.name}' expected a string key or Document, got {type(value).__name__}."
-            )
+            raise ValidationError(f"Field '{self.name}' expected a string key or Document, got {type(value).__name__}.")
 
     def dereference(self, key: str):
         """Load the referenced document by key.

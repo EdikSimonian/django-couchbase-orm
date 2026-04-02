@@ -87,7 +87,7 @@ class QuerySet:
                 # Map field name to db_field
                 base_field = field_expr.split("__")[0]
                 if base_field in field_map and field_map[base_field] != base_field:
-                    field_expr = field_map[base_field] + field_expr[len(base_field):]
+                    field_expr = field_map[base_field] + field_expr[len(base_field) :]
                 clause = apply_lookup(query, field_expr, value)
                 query.where(clause)
 
@@ -101,7 +101,7 @@ class QuerySet:
                 field_expr, value = f
                 base_field = field_expr.split("__")[0]
                 if base_field in field_map and field_map[base_field] != base_field:
-                    field_expr = field_map[base_field] + field_expr[len(base_field):]
+                    field_expr = field_map[base_field] + field_expr[len(base_field) :]
                 clause = apply_lookup(query, field_expr, value)
                 query.where(f"NOT ({clause})")
 
@@ -297,9 +297,7 @@ class QuerySet:
         results = qs._execute()
 
         if not results:
-            raise self._document_class.DoesNotExist(
-                f"{self._document_class.__name__} matching query does not exist."
-            )
+            raise self._document_class.DoesNotExist(f"{self._document_class.__name__} matching query does not exist.")
         if len(results) > 1:
             raise self._document_class.MultipleObjectsReturned(
                 f"get() returned more than one {self._document_class.__name__}."

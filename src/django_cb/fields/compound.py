@@ -14,8 +14,9 @@ class ListField(BaseField):
     Optionally takes a `field` argument to validate/coerce each element.
     """
 
-    def __init__(self, field: BaseField | None = None, min_length: int | None = None,
-                 max_length: int | None = None, **kwargs):
+    def __init__(
+        self, field: BaseField | None = None, min_length: int | None = None, max_length: int | None = None, **kwargs
+    ):
         self.field = field
         self.min_length = min_length
         self.max_length = max_length
@@ -46,21 +47,15 @@ class ListField(BaseField):
         if not isinstance(value, (list, tuple)):
             raise ValidationError(f"Field '{self.name}' expected a list, got {type(value).__name__}.")
         if self.min_length is not None and len(value) < self.min_length:
-            raise ValidationError(
-                f"Field '{self.name}' list is too short. Minimum length is {self.min_length}."
-            )
+            raise ValidationError(f"Field '{self.name}' list is too short. Minimum length is {self.min_length}.")
         if self.max_length is not None and len(value) > self.max_length:
-            raise ValidationError(
-                f"Field '{self.name}' list is too long. Maximum length is {self.max_length}."
-            )
+            raise ValidationError(f"Field '{self.name}' list is too long. Maximum length is {self.max_length}.")
         if self.field:
             for i, item in enumerate(value):
                 try:
                     self.field.validate(item)
                 except ValidationError as e:
-                    raise ValidationError(
-                        f"Field '{self.name}' item at index {i}: {e.message}"
-                    ) from e
+                    raise ValidationError(f"Field '{self.name}' item at index {i}: {e.message}") from e
 
 
 class DictField(BaseField):
@@ -201,8 +196,7 @@ class EmbeddedDocumentField(BaseField):
         if isinstance(value, dict):
             return self.document_class.from_dict(value)
         raise ValidationError(
-            f"Field '{self.name}' expected a {self.document_class.__name__} or dict, "
-            f"got {type(value).__name__}."
+            f"Field '{self.name}' expected a {self.document_class.__name__} or dict, got {type(value).__name__}."
         )
 
     def to_json(self, value: Any) -> dict | None:
@@ -212,9 +206,7 @@ class EmbeddedDocumentField(BaseField):
             return value.to_dict()
         if isinstance(value, dict):
             return value
-        raise ValidationError(
-            f"Field '{self.name}' cannot serialize {type(value).__name__} to JSON."
-        )
+        raise ValidationError(f"Field '{self.name}' cannot serialize {type(value).__name__} to JSON.")
 
     def validate(self, value: Any) -> None:
         super().validate(value)
@@ -224,7 +216,6 @@ class EmbeddedDocumentField(BaseField):
             value = self.document_class.from_dict(value)
         if not isinstance(value, self.document_class):
             raise ValidationError(
-                f"Field '{self.name}' expected a {self.document_class.__name__}, "
-                f"got {type(value).__name__}."
+                f"Field '{self.name}' expected a {self.document_class.__name__}, got {type(value).__name__}."
             )
         value.validate()

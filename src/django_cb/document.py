@@ -242,9 +242,7 @@ class Document(metaclass=DocumentMetaclass):
         # Apply pre_save_value for fields that support it (auto_now, auto_now_add)
         for field_name, field in self._meta.fields.items():
             if hasattr(field, "pre_save_value"):
-                self._data[field_name] = field.pre_save_value(
-                    self._data.get(field_name), self._is_new
-                )
+                self._data[field_name] = field.pre_save_value(self._data.get(field_name), self._is_new)
 
         if validate:
             self.full_clean()

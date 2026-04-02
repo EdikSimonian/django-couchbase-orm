@@ -73,9 +73,14 @@ class User(Document):
         return self.username or self.pk
 
     @classmethod
-    def create_user(cls, username: str, email: str | None = None,
-                    password: str | None = None, _id: str | None = None,
-                    **extra_fields) -> User:
+    def create_user(
+        cls,
+        username: str,
+        email: str | None = None,
+        password: str | None = None,
+        _id: str | None = None,
+        **extra_fields,
+    ) -> User:
         """Create and save a regular user."""
         user = cls(_id=_id or f"user::{username}", username=username, email=email or "", **extra_fields)
         if password:
@@ -86,8 +91,9 @@ class User(Document):
         return user
 
     @classmethod
-    def create_superuser(cls, username: str, email: str | None = None,
-                         password: str | None = None, **extra_fields) -> User:
+    def create_superuser(
+        cls, username: str, email: str | None = None, password: str | None = None, **extra_fields
+    ) -> User:
         """Create and save a superuser."""
         extra_fields.setdefault("is_staff", True)
         extra_fields.setdefault("is_superuser", True)

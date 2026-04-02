@@ -123,9 +123,7 @@ class DocumentManager:
             instance._cas = result.cas
             return instance
         except DocumentNotFoundException:
-            raise self._document_class.DoesNotExist(
-                f"{self._document_class.__name__} with pk '{pk}' does not exist."
-            )
+            raise self._document_class.DoesNotExist(f"{self._document_class.__name__} with pk '{pk}' does not exist.")
         except self._document_class.DoesNotExist:
             raise
         except Exception as e:

@@ -85,7 +85,7 @@ class Q:
                 if field_map:
                     base_field = field_expr.split("__")[0]
                     if base_field in field_map and field_map[base_field] != base_field:
-                        field_expr = field_map[base_field] + field_expr[len(base_field):]
+                        field_expr = field_map[base_field] + field_expr[len(base_field) :]
                 clause = apply_lookup(query, field_expr, value)
                 parts.append(clause)
 

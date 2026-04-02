@@ -16,9 +16,11 @@ LOOKUP_TRANSFORMS: dict[str, Any] = {}
 
 def register_lookup(name: str):
     """Decorator to register a lookup transform."""
+
     def decorator(func):
         LOOKUP_TRANSFORMS[name] = func
         return func
+
     return decorator
 
 

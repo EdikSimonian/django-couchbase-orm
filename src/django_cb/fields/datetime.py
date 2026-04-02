@@ -26,12 +26,8 @@ class DateTimeField(BaseField):
             try:
                 return datetime.fromisoformat(value)
             except (ValueError, TypeError) as e:
-                raise ValidationError(
-                    f"Field '{self.name}' could not parse datetime from '{value}'."
-                ) from e
-        raise ValidationError(
-            f"Field '{self.name}' expected a datetime or ISO string, got {type(value).__name__}."
-        )
+                raise ValidationError(f"Field '{self.name}' could not parse datetime from '{value}'.") from e
+        raise ValidationError(f"Field '{self.name}' expected a datetime or ISO string, got {type(value).__name__}.")
 
     def to_json(self, value: Any) -> str | None:
         if value is None:
@@ -42,25 +38,19 @@ class DateTimeField(BaseField):
             # Validate it parses
             datetime.fromisoformat(value)
             return value
-        raise ValidationError(
-            f"Field '{self.name}' cannot serialize {type(value).__name__} to JSON."
-        )
+        raise ValidationError(f"Field '{self.name}' cannot serialize {type(value).__name__} to JSON.")
 
     def validate(self, value: Any) -> None:
         super().validate(value)
         if value is None:
             return
         if not isinstance(value, (datetime, str)):
-            raise ValidationError(
-                f"Field '{self.name}' expected a datetime or ISO string, got {type(value).__name__}."
-            )
+            raise ValidationError(f"Field '{self.name}' expected a datetime or ISO string, got {type(value).__name__}.")
         if isinstance(value, str):
             try:
                 datetime.fromisoformat(value)
             except (ValueError, TypeError):
-                raise ValidationError(
-                    f"Field '{self.name}' value '{value}' is not a valid ISO 8601 datetime."
-                )
+                raise ValidationError(f"Field '{self.name}' value '{value}' is not a valid ISO 8601 datetime.")
 
     def pre_save_value(self, value: Any, is_new: bool) -> Any:
         """Called by Document.save() to handle auto_now / auto_now_add."""
@@ -91,12 +81,8 @@ class DateField(BaseField):
             try:
                 return date.fromisoformat(value)
             except (ValueError, TypeError) as e:
-                raise ValidationError(
-                    f"Field '{self.name}' could not parse date from '{value}'."
-                ) from e
-        raise ValidationError(
-            f"Field '{self.name}' expected a date or ISO string, got {type(value).__name__}."
-        )
+                raise ValidationError(f"Field '{self.name}' could not parse date from '{value}'.") from e
+        raise ValidationError(f"Field '{self.name}' expected a date or ISO string, got {type(value).__name__}.")
 
     def to_json(self, value: Any) -> str | None:
         if value is None:
@@ -108,25 +94,19 @@ class DateField(BaseField):
         if isinstance(value, str):
             date.fromisoformat(value)
             return value
-        raise ValidationError(
-            f"Field '{self.name}' cannot serialize {type(value).__name__} to JSON."
-        )
+        raise ValidationError(f"Field '{self.name}' cannot serialize {type(value).__name__} to JSON.")
 
     def validate(self, value: Any) -> None:
         super().validate(value)
         if value is None:
             return
         if not isinstance(value, (date, str)):
-            raise ValidationError(
-                f"Field '{self.name}' expected a date or ISO string, got {type(value).__name__}."
-            )
+            raise ValidationError(f"Field '{self.name}' expected a date or ISO string, got {type(value).__name__}.")
         if isinstance(value, str):
             try:
                 date.fromisoformat(value)
             except (ValueError, TypeError):
-                raise ValidationError(
-                    f"Field '{self.name}' value '{value}' is not a valid ISO 8601 date."
-                )
+                raise ValidationError(f"Field '{self.name}' value '{value}' is not a valid ISO 8601 date.")
 
     def pre_save_value(self, value: Any, is_new: bool) -> Any:
         """Called by Document.save() to handle auto_now / auto_now_add."""

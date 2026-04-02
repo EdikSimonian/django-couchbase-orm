@@ -41,22 +41,16 @@ class StringField(BaseField):
             raise ValidationError(f"Field '{self.name}' expected a string, got {type(value).__name__}.")
 
         if self.min_length is not None and len(value) < self.min_length:
-            raise ValidationError(
-                f"Field '{self.name}' value is too short. Minimum length is {self.min_length}."
-            )
+            raise ValidationError(f"Field '{self.name}' value is too short. Minimum length is {self.min_length}.")
 
         if self.max_length is not None and len(value) > self.max_length:
-            raise ValidationError(
-                f"Field '{self.name}' value is too long. Maximum length is {self.max_length}."
-            )
+            raise ValidationError(f"Field '{self.name}' value is too long. Maximum length is {self.max_length}.")
 
         if self.regex is not None:
             import re
 
             if not re.match(self.regex, value):
-                raise ValidationError(
-                    f"Field '{self.name}' value does not match pattern '{self.regex}'."
-                )
+                raise ValidationError(f"Field '{self.name}' value does not match pattern '{self.regex}'.")
 
 
 class IntegerField(BaseField):
@@ -94,14 +88,10 @@ class IntegerField(BaseField):
             raise ValidationError(f"Field '{self.name}' expected an integer, got {type(value).__name__}.")
 
         if self.min_value is not None and value < self.min_value:
-            raise ValidationError(
-                f"Field '{self.name}' value {value} is less than minimum {self.min_value}."
-            )
+            raise ValidationError(f"Field '{self.name}' value {value} is less than minimum {self.min_value}.")
 
         if self.max_value is not None and value > self.max_value:
-            raise ValidationError(
-                f"Field '{self.name}' value {value} is greater than maximum {self.max_value}."
-            )
+            raise ValidationError(f"Field '{self.name}' value {value} is greater than maximum {self.max_value}.")
 
 
 class FloatField(BaseField):
@@ -139,14 +129,10 @@ class FloatField(BaseField):
             raise ValidationError(f"Field '{self.name}' expected a number, got {type(value).__name__}.")
 
         if self.min_value is not None and value < self.min_value:
-            raise ValidationError(
-                f"Field '{self.name}' value {value} is less than minimum {self.min_value}."
-            )
+            raise ValidationError(f"Field '{self.name}' value {value} is less than minimum {self.min_value}.")
 
         if self.max_value is not None and value > self.max_value:
-            raise ValidationError(
-                f"Field '{self.name}' value {value} is greater than maximum {self.max_value}."
-            )
+            raise ValidationError(f"Field '{self.name}' value {value} is greater than maximum {self.max_value}.")
 
 
 class BooleanField(BaseField):
