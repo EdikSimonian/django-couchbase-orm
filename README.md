@@ -582,27 +582,25 @@ The library is designed with security as a priority:
 
 ## Test Coverage
 
-**501 tests** across 20 test modules, tested on Python 3.10, 3.11, 3.12, and 3.13.
+**557 tests** across 22 test modules, tested on Python 3.10, 3.11, 3.12, and 3.13.
 
 | Module | Coverage |
 |--------|----------|
 | Fields (base, simple, datetime, compound, reference) | 93-100% |
-| Exceptions, signals, utils | 100% |
-| Paginator | 100% |
+| Exceptions, signals, utils, paginator | 100% |
 | Auth backend | 100% |
-| Q objects | 95% |
 | Transform lookups | 99% |
 | Options | 98% |
-| Document (sync + async) | 80% |
+| Document (sync + async) | 95% |
+| Q objects | 95% |
 | N1QL query builder | 92% |
-| QuerySet (sync + async) | 46%* |
-| Manager (sync + async) | 76% |
+| Manager (sync + async) | 92% |
+| Async connection | 89% |
+| QuerySet (sync + async) | 89% |
 | Session backend | 74% |
 | Management commands | 63-76% |
 
-\* QuerySet execution methods require a live Couchbase cluster. They are tested via live integration tests but not counted in unit test coverage.
-
-**Overall: 80% unit test coverage, 501 tests, 0 known vulnerabilities (pip-audit clean).**
+**Overall: 91% unit test coverage, 557 tests, 0 known vulnerabilities (pip-audit clean).**
 
 ## Development
 
