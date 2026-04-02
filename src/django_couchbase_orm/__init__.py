@@ -1,6 +1,6 @@
 """django-couchbase-orm: A Couchbase ORM for Django applications."""
 
-__version__ = "0.3.0"
+__version__ = "0.4.0"
 
 from django_couchbase_orm.aggregates import Avg, Count, Max, Min, Sum
 from django_couchbase_orm.document import Document
