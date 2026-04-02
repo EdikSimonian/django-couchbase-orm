@@ -159,10 +159,14 @@ def _login_required(view_func):
 # ============================================================
 
 
-def home(request):
-    brewery_count = Brewery.objects.count()
-    beer_count = Beer.objects.count()
-    featured = list(Brewery.objects.order_by("name")[:12])
+async def home(request):
+    import asyncio
+
+    brewery_count, beer_count, featured = await asyncio.gather(
+        Brewery.objects.acount(),
+        Beer.objects.acount(),
+        Brewery.objects.order_by("name")[:12].alist(),
+    )
     cb_user = _get_current_user(request)
 
     return render(request, "beers/home.html", {
@@ -173,7 +177,9 @@ def home(request):
     })
 
 
-def brewery_list(request):
+async def brewery_list(request):
+    import asyncio
+
     search = request.GET.get("q", "").strip()[:200]
     page = _safe_page(request)
     per_page = 20
@@ -182,10 +188,12 @@ def brewery_list(request):
     if search:
         qs = qs.filter(name__icontains=search)
 
-    total = qs.count()
+    total, breweries = await asyncio.gather(
+        qs.acount(),
+        qs[(page - 1) * per_page : page * per_page].alist(),
+    )
     total_pages = max(1, (total + per_page - 1) // per_page)
     page = min(page, total_pages)
-    breweries = list(qs[(page - 1) * per_page : page * per_page])
 
     return render(request, "beers/brewery_list.html", {
         "breweries": breweries,
@@ -215,7 +223,9 @@ def brewery_detail(request, brewery_id):
     })
 
 
-def beer_list(request):
+async def beer_list(request):
+    import asyncio
+
     search = request.GET.get("q", "").strip()[:200]
     style = request.GET.get("style", "").strip()[:200]
     page = _safe_page(request)
@@ -227,13 +237,15 @@ def beer_list(request):
     if style:
         qs = qs.filter(style=style)
 
-    total = qs.count()
+    # Run count, page fetch, and styles query concurrently
+    total, beers, style_rows = await asyncio.gather(
+        qs.acount(),
+        qs[(page - 1) * per_page : page * per_page].alist(),
+        Beer.objects.values("style").order_by("style").alist(),
+    )
     total_pages = max(1, (total + per_page - 1) // per_page)
     page = min(page, total_pages)
-    beers = list(qs[(page - 1) * per_page : page * per_page])
 
-    # Get styles using QuerySet instead of hardcoded raw query
-    style_rows = Beer.objects.values("style").order_by("style")
     seen = set()
     styles = []
     for row in style_rows:

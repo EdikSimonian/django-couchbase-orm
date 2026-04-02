@@ -90,6 +90,65 @@ class DocumentManager:
         return self._get_queryset().iterator()
 
     # ============================================================
+    # Async QuerySet delegation
+    # ============================================================
+
+    async def acount(self) -> int:
+        return await self._get_queryset().acount()
+
+    async def afirst(self):
+        return await self._get_queryset().afirst()
+
+    async def alist(self) -> list:
+        return await self._get_queryset().alist()
+
+    async def aget(self, pk: str | None = None, *args, **kwargs):
+        """Async get — KV fast path for pk, N1QL for field lookups."""
+        if pk is not None:
+            return await self._aget_by_pk(pk)
+        if args or kwargs:
+            return await self._get_queryset().aget(*args, **kwargs)
+        raise ValueError("aget() requires at least one lookup argument.")
+
+    async def _aget_by_pk(self, pk: str):
+        """Async fetch by primary key using KV."""
+        try:
+            from couchbase.exceptions import DocumentNotFoundException
+
+            from django_couchbase_orm.async_connection import get_async_collection
+
+            collection = await get_async_collection(
+                alias=self._document_class._meta.bucket_alias,
+                scope=self._document_class._meta.scope_name,
+                collection=self._document_class._meta.collection_name,
+            )
+            result = await collection.get(pk)
+            data = result.content_as[dict]
+
+            doc_type = data.get(self._document_class._meta.doc_type_field)
+            if doc_type and doc_type != self._document_class._meta.doc_type_value:
+                raise self._document_class.DoesNotExist(
+                    f"Document '{pk}' exists but is not of type '{self._document_class._meta.doc_type_value}'."
+                )
+
+            instance = self._document_class.from_dict(pk, data)
+            instance._cas = result.cas
+            return instance
+        except DocumentNotFoundException:
+            raise self._document_class.DoesNotExist(f"{self._document_class.__name__} with pk '{pk}' does not exist.")
+        except self._document_class.DoesNotExist:
+            raise
+        except Exception as e:
+            raise OperationError(f"Failed to get document '{pk}': {e}") from e
+
+    async def acreate(self, _id: str | None = None, **kwargs):
+        """Async version of create()."""
+        instance = self._document_class(_id=_id, **kwargs)
+        instance.full_clean()
+        await instance.asave(validate=False)
+        return instance
+
+    # ============================================================
     # KV-optimized operations (bypass N1QL for speed)
     # ============================================================
 

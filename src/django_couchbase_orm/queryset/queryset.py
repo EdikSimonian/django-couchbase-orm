@@ -514,3 +514,138 @@ class QuerySet:
                 yield self._document_class.from_dict(doc_id, row)
             else:
                 yield row
+
+    # ============================================================
+    # Async methods
+    # ============================================================
+
+    async def _async_execute(self) -> list:
+        """Execute the query asynchronously and return results."""
+        if self._result_cache is not None:
+            return self._result_cache
+
+        query = self._build_query()
+        statement, params = query.build()
+
+        from couchbase.options import QueryOptions
+
+        from django_couchbase_orm.async_connection import get_async_cluster
+
+        cluster = await get_async_cluster(self._meta.bucket_alias)
+        result = cluster.query(statement, QueryOptions(positional_parameters=params))
+
+        if self._values_fields is not None:
+            self._result_cache = [row async for row in result]
+        else:
+            documents = []
+            async for row in result:
+                doc_id = row.pop("__id", None)
+                if doc_id:
+                    documents.append(self._document_class.from_dict(doc_id, row))
+                else:
+                    documents.append(row)
+            if self._select_related_fields and documents:
+                await self._async_prefetch_related(documents)
+            self._result_cache = documents
+
+        return self._result_cache
+
+    async def _async_prefetch_related(self, documents: list) -> None:
+        """Async version of _prefetch_related."""
+        from django_couchbase_orm.async_connection import get_async_collection
+        from django_couchbase_orm.fields.reference import ReferenceField
+
+        for field_name in self._select_related_fields:
+            field = self._meta.fields.get(field_name)
+            if not field or not isinstance(field, ReferenceField):
+                continue
+
+            keys = {doc._data.get(field_name) for doc in documents if doc._data.get(field_name)}
+            if not keys:
+                continue
+
+            ref_class = field._resolve_type()
+            collection = await get_async_collection(
+                alias=ref_class._meta.bucket_alias,
+                scope=ref_class._meta.scope_name,
+                collection=ref_class._meta.collection_name,
+            )
+
+            ref_cache = {}
+            for key in keys:
+                try:
+                    result = await collection.get(key)
+                    data = result.content_as[dict]
+                    ref_cache[key] = ref_class.from_dict(key, data)
+                except Exception:
+                    pass
+
+            for doc in documents:
+                key = doc._data.get(field_name)
+                if key and key in ref_cache:
+                    doc._prefetched = getattr(doc, "_prefetched", {})
+                    doc._prefetched[field_name] = ref_cache[key]
+
+    async def acount(self) -> int:
+        """Async version of count()."""
+        if self._result_cache is not None:
+            return len(self._result_cache)
+        query = self._build_query()
+        query.select_count()
+        query._order_by = []
+        query._limit = None
+        query._offset = None
+        statement, params = query.build()
+
+        from couchbase.options import QueryOptions
+
+        from django_couchbase_orm.async_connection import get_async_cluster
+
+        cluster = await get_async_cluster(self._meta.bucket_alias)
+        result = cluster.query(statement, QueryOptions(positional_parameters=params))
+        async for row in result:
+            return row.get("__count", 0)
+        return 0
+
+    async def aexists(self) -> bool:
+        """Async version of exists()."""
+        if self._result_cache is not None:
+            return len(self._result_cache) > 0
+        qs = self._clone()
+        qs._limit_val = 1
+        results = await qs._async_execute()
+        return len(results) > 0
+
+    async def afirst(self) -> Document | None:
+        """Async version of first()."""
+        qs = self._clone()
+        qs._limit_val = 1
+        results = await qs._async_execute()
+        return results[0] if results else None
+
+    async def aget(self, *args: Q, **kwargs) -> Document:
+        """Async version of get()."""
+        qs = self.filter(*args, **kwargs) if args or kwargs else self._clone()
+        qs._limit_val = 2
+        results = await qs._async_execute()
+
+        if not results:
+            raise self._document_class.DoesNotExist(f"{self._document_class.__name__} matching query does not exist.")
+        if len(results) > 1:
+            raise self._document_class.MultipleObjectsReturned(
+                f"get() returned more than one {self._document_class.__name__}."
+            )
+        return results[0]
+
+    async def alist(self) -> list:
+        """Async execution returning a list of results."""
+        return await self._async_execute()
+
+    def __aiter__(self):
+        """Support async for loops: async for doc in queryset."""
+        return self._async_iterator()
+
+    async def _async_iterator(self):
+        results = await self._async_execute()
+        for item in results:
+            yield item

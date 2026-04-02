@@ -294,3 +294,75 @@ class Document(metaclass=DocumentMetaclass):
             self._is_new = False
         except Exception as e:
             raise OperationError(f"Failed to reload document '{self.pk}': {e}") from e
+
+    # ============================================================
+    # Async CRUD
+    # ============================================================
+
+    async def _aget_collection(self):
+        """Get the async Couchbase Collection for this document class."""
+        from django_couchbase_orm.async_connection import get_async_collection
+
+        return await get_async_collection(
+            alias=self._meta.bucket_alias,
+            scope=self._meta.scope_name,
+            collection=self._meta.collection_name,
+        )
+
+    async def asave(self, validate: bool = True) -> None:
+        """Async version of save()."""
+        from django_couchbase_orm.signals import post_save, pre_save
+
+        created = self._is_new
+
+        for field_name, field in self._meta.fields.items():
+            if hasattr(field, "pre_save_value"):
+                self._data[field_name] = field.pre_save_value(self._data.get(field_name), self._is_new)
+
+        if validate:
+            self.full_clean()
+
+        pre_save.send(sender=type(self), instance=self, created=created)
+
+        collection = await self._aget_collection()
+        data = self.to_dict()
+
+        try:
+            from couchbase.options import UpsertOptions
+
+            result = await collection.upsert(self.pk, data, UpsertOptions())
+            self._cas = result.cas
+            self._is_new = False
+        except Exception as e:
+            raise OperationError(f"Failed to save document '{self.pk}': {e}") from e
+
+        post_save.send(sender=type(self), instance=self, created=created)
+
+    async def adelete(self) -> None:
+        """Async version of delete()."""
+        from django_couchbase_orm.signals import post_delete, pre_delete
+
+        pre_delete.send(sender=type(self), instance=self)
+
+        collection = await self._aget_collection()
+        try:
+            await collection.remove(self.pk)
+        except Exception as e:
+            raise OperationError(f"Failed to delete document '{self.pk}': {e}") from e
+
+        post_delete.send(sender=type(self), instance=self)
+
+    async def areload(self) -> None:
+        """Async version of reload()."""
+        collection = await self._aget_collection()
+        try:
+            result = await collection.get(self.pk)
+            data = result.content_as[dict]
+            for field_name, field in self._meta.fields.items():
+                db_field = field.get_db_field()
+                if db_field in data:
+                    self._data[field_name] = field.to_python(data[db_field])
+            self._cas = result.cas
+            self._is_new = False
+        except Exception as e:
+            raise OperationError(f"Failed to reload document '{self.pk}': {e}") from e

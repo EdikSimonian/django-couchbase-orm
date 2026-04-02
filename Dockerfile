@@ -22,4 +22,4 @@ WORKDIR /app/example
 
 EXPOSE ${PORT:-8000}
 
-CMD gunicorn beerapp.wsgi --bind 0.0.0.0:${PORT:-8000}
+CMD uvicorn beerapp.asgi:application --host 0.0.0.0 --port ${PORT:-8000}
