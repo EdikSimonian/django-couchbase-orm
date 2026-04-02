@@ -10,6 +10,21 @@ from django_couchbase_orm.queryset.q import Q
 
 from .documents import Beer, Brewery
 
+# Simple in-memory cache for expensive queries that rarely change
+_cache = {}
+CACHE_TTL = 300  # 5 minutes
+
+
+def _get_cached(key, ttl=CACHE_TTL):
+    entry = _cache.get(key)
+    if entry and time.time() - entry[0] < ttl:
+        return entry[1]
+    return None
+
+
+def _set_cached(key, value):
+    _cache[key] = (time.time(), value)
+
 
 # ============================================================
 # Validation helpers
@@ -162,11 +177,19 @@ def _login_required(view_func):
 async def home(request):
     import asyncio
 
-    brewery_count, beer_count, featured = await asyncio.gather(
-        Brewery.objects.acount(),
-        Beer.objects.acount(),
-        Brewery.objects.order_by("name")[:12].alist(),
-    )
+    # Cache counts for 5 min — they rarely change
+    cached_counts = _get_cached("home_counts")
+    if cached_counts:
+        brewery_count, beer_count = cached_counts
+        featured = await Brewery.objects.order_by("name")[:12].alist()
+    else:
+        brewery_count, beer_count, featured = await asyncio.gather(
+            Brewery.objects.acount(),
+            Beer.objects.acount(),
+            Brewery.objects.order_by("name")[:12].alist(),
+        )
+        _set_cached("home_counts", (brewery_count, beer_count))
+
     cb_user = _get_current_user(request)
 
     return render(request, "beers/home.html", {
@@ -237,22 +260,26 @@ async def beer_list(request):
     if style:
         qs = qs.filter(style=style)
 
-    # Run count, page fetch, and styles query concurrently
-    total, beers, style_rows = await asyncio.gather(
+    # Run count and page fetch concurrently
+    total, beers = await asyncio.gather(
         qs.acount(),
         qs[(page - 1) * per_page : page * per_page].alist(),
-        Beer.objects.values("style").order_by("style").alist(),
     )
     total_pages = max(1, (total + per_page - 1) // per_page)
     page = min(page, total_pages)
 
-    seen = set()
-    styles = []
-    for row in style_rows:
-        s = row.get("style")
-        if s and s not in seen:
-            seen.add(s)
-            styles.append(s)
+    # Cache styles dropdown — rarely changes
+    styles = _get_cached("beer_styles")
+    if styles is None:
+        style_rows = await Beer.objects.values("style").order_by("style").alist()
+        seen = set()
+        styles = []
+        for row in style_rows:
+            s = row.get("style")
+            if s and s not in seen:
+                seen.add(s)
+                styles.append(s)
+        _set_cached("beer_styles", styles)
 
     return render(request, "beers/beer_list.html", {
         "beers": beers,

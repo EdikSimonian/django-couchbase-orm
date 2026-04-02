@@ -139,7 +139,7 @@ class QuerySet:
         from django_couchbase_orm.connection import get_cluster
 
         cluster = get_cluster(self._meta.bucket_alias)
-        result = cluster.query(statement, QueryOptions(positional_parameters=params))
+        result = cluster.query(statement, QueryOptions(positional_parameters=params, adhoc=False))
 
         if self._values_fields is not None:
             self._result_cache = list(result)
@@ -318,7 +318,7 @@ class QuerySet:
         from django_couchbase_orm.connection import get_cluster
 
         cluster = get_cluster(self._meta.bucket_alias)
-        result = cluster.query(statement, QueryOptions(positional_parameters=params))
+        result = cluster.query(statement, QueryOptions(positional_parameters=params, adhoc=False))
         for row in result:
             return row.get("__count", 0)
         return 0
@@ -532,7 +532,7 @@ class QuerySet:
         from django_couchbase_orm.async_connection import get_async_cluster
 
         cluster = await get_async_cluster(self._meta.bucket_alias)
-        result = cluster.query(statement, QueryOptions(positional_parameters=params))
+        result = cluster.query(statement, QueryOptions(positional_parameters=params, adhoc=False))
 
         if self._values_fields is not None:
             self._result_cache = [row async for row in result]
@@ -602,7 +602,7 @@ class QuerySet:
         from django_couchbase_orm.async_connection import get_async_cluster
 
         cluster = await get_async_cluster(self._meta.bucket_alias)
-        result = cluster.query(statement, QueryOptions(positional_parameters=params))
+        result = cluster.query(statement, QueryOptions(positional_parameters=params, adhoc=False))
         async for row in result:
             return row.get("__count", 0)
         return 0
