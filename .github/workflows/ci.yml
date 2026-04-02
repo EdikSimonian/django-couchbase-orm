@@ -67,19 +67,32 @@ jobs:
         run: |
           curl -s -X POST http://localhost:8091/clusterInit \
             -d 'hostname=127.0.0.1&username=Administrator&password=password&port=SAME&services=kv,n1ql,index&memoryQuota=256&indexMemoryQuota=256'
-          sleep 3
+          sleep 5
           curl -s -X POST http://localhost:8091/pools/default/buckets \
             -u Administrator:password \
             -d 'name=testbucket&ramQuota=128&bucketType=couchbase'
-          sleep 3
+          sleep 5
           curl -s -X POST http://localhost:8091/settings/indexes \
             -u Administrator:password \
             -d 'storageMode=plasma'
-          sleep 2
+          sleep 3
           curl -s -X POST http://localhost:8093/query/service \
             -u Administrator:password \
             -d 'statement=CREATE PRIMARY INDEX IF NOT EXISTS ON `testbucket`._default._default'
-          sleep 2
+          sleep 3
+      - name: Wait for N1QL service
+        run: |
+          for i in $(seq 1 20); do
+            result=$(curl -s -X POST http://localhost:8093/query/service \
+              -u Administrator:password \
+              -d 'statement=SELECT 1' 2>&1)
+            if echo "$result" | grep -q '"status": "success"'; then
+              echo "N1QL service is ready"
+              break
+            fi
+            echo "Waiting for N1QL service... ($i)"
+            sleep 3
+          done
       - name: Run integration tests
         run: pytest tests/test_integration.py -v --tb=short
 
