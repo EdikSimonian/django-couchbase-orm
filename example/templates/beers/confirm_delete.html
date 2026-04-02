@@ -6,8 +6,8 @@
     <p>Are you sure you want to delete <strong>{{ object_name }}</strong>? This action cannot be undone.</p>
     <form method="post" style="display:inline;">
         {% csrf_token %}
-        <button type="submit" class="btn btn-danger" style="min-width:120px;">Yes, delete</button>
-        <a href="{% url cancel_url cancel_id %}" class="btn btn-secondary" style="min-width:120px; text-align:center;">Cancel</a>
+        <button type="submit" class="btn btn-danger" style="min-width:120px; padding:0.6rem 1.5rem; font-size:0.95rem; line-height:1.4; box-sizing:border-box;">Yes, delete</button>
+        <a href="{% url cancel_url cancel_id %}" class="btn btn-secondary" style="min-width:120px; padding:0.6rem 1.5rem; font-size:0.95rem; line-height:1.4; box-sizing:border-box; text-align:center;">Cancel</a>
     </form>
 </div>
 {% endblock %}
