@@ -1,39 +1,10 @@
-import os
-
 from django.contrib import messages
-from django.http import Http404, JsonResponse
+from django.http import Http404
 from django.shortcuts import redirect, render
 
 from django_cb.queryset.q import Q
 
 from .documents import Beer, Brewery
-
-
-def debug_health(request):
-    """Temporary debug endpoint — remove after deployment is working."""
-    import sys
-
-    info = {
-        "python": sys.version,
-        "env": {
-            "CB_CONNECTION_STRING": os.environ.get("CB_CONNECTION_STRING", "NOT SET"),
-            "CB_USERNAME": os.environ.get("CB_USERNAME", "NOT SET"),
-            "CB_PASSWORD": "***" if os.environ.get("CB_PASSWORD") else "NOT SET",
-            "CB_BUCKET": os.environ.get("CB_BUCKET", "NOT SET"),
-            "CB_SCOPE": os.environ.get("CB_SCOPE", "NOT SET"),
-            "RAILWAY_PUBLIC_DOMAIN": os.environ.get("RAILWAY_PUBLIC_DOMAIN", "NOT SET"),
-        },
-    }
-
-    # Try connecting
-    try:
-        from django_cb.connection import get_cluster
-        cluster = get_cluster()
-        info["couchbase"] = "CONNECTED"
-    except Exception as e:
-        info["couchbase"] = f"FAILED: {type(e).__name__}: {e}"
-
-    return JsonResponse(info)
 
 
 # ============================================================
