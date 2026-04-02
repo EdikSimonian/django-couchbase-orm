@@ -34,7 +34,8 @@ class SubDocAccessor:
             import couchbase.subdocument as SD
 
             result = self._collection.lookup_in(self._document.pk, [SD.get(path)])
-            return result.content_as[object](0)
+            # Use the raw value from the result to preserve type (int, str, dict, etc.)
+            return result.value[0]["value"]
         except Exception as e:
             raise OperationError(f"Sub-document get failed for path '{path}': {e}") from e
 
@@ -54,7 +55,7 @@ class SubDocAccessor:
             import couchbase.subdocument as SD
 
             result = self._collection.lookup_in(self._document.pk, [SD.count(path)])
-            return result.content_as[int](0)
+            return result.value[0]["value"]
         except Exception as e:
             raise OperationError(f"Sub-document count failed for path '{path}': {e}") from e
 
