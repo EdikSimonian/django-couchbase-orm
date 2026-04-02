@@ -52,7 +52,7 @@ packages = ["src/django_cb"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-pythonpath = ["src"]
+pythonpath = ["src", "."]
 DJANGO_SETTINGS_MODULE = "tests.django_settings"
 
 [tool.ruff]
