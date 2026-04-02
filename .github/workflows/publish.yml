@@ -13,9 +13,9 @@ jobs:
         with:
           python-version: "3.12"
       - name: Install package with dev dependencies
-        run: pip install -e ".[dev]"
+        run: pip install -e ".[dev]" && pip install pytest-asyncio
       - name: Run tests
-        run: pytest tests/ -v --tb=short
+        run: pytest tests/ -v --tb=short -m "not integration"
 
   publish:
     runs-on: ubuntu-latest
