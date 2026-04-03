@@ -212,6 +212,76 @@ def _fix_positional_group_by(sql: str, columns: list[str] | None) -> str:
     return sql[: m.start(1)] + new_group + sql[m.end(1) :]
 
 
+def _fix_aggregate_without_group_by(sql: str) -> str:
+    """Fix SELECT that mixes regular columns with aggregates without GROUP BY.
+
+    N1QL (unlike some SQL databases) requires GROUP BY when mixing regular
+    columns with aggregate functions. When Django generates:
+        SELECT col1, col2, COUNT(*) AS __count FROM keyspace
+    we convert it to:
+        SELECT COUNT(*) AS __count FROM keyspace
+
+    This pattern occurs in Django's QuerySet.count() on distinct querysets.
+    """
+    sql_upper = sql.strip().upper()
+    if "GROUP BY" in sql_upper or "COUNT(" not in sql_upper:
+        return sql
+
+    # Check if there's a mix of aggregate and non-aggregate columns.
+    m = re.match(
+        r"(SELECT\s+(?:DISTINCT\s+)?)(.*?)(\s+FROM\s+.*)",
+        sql.strip(),
+        re.IGNORECASE | re.DOTALL,
+    )
+    if not m:
+        return sql
+
+    select_part = m.group(2)
+
+    # Parse columns.
+    columns = []
+    depth = 0
+    current = []
+    for ch in select_part:
+        if ch == "(":
+            depth += 1
+            current.append(ch)
+        elif ch == ")":
+            depth -= 1
+            current.append(ch)
+        elif ch == "," and depth == 0:
+            columns.append("".join(current).strip())
+            current = []
+        else:
+            current.append(ch)
+    if current:
+        columns.append("".join(current).strip())
+
+    if len(columns) <= 1:
+        return sql
+
+    # Classify columns as aggregate or regular.
+    agg_pattern = re.compile(
+        r"^\s*(COUNT|SUM|AVG|MIN|MAX|ARRAY_AGG)\s*\(",
+        re.IGNORECASE,
+    )
+    agg_cols = []
+    regular_cols = []
+    for col in columns:
+        if agg_pattern.match(col):
+            agg_cols.append(col)
+        else:
+            regular_cols.append(col)
+
+    if not agg_cols or not regular_cols:
+        return sql
+
+    # Has both regular and aggregate columns without GROUP BY.
+    # Keep only the aggregate columns.
+    new_select = ", ".join(agg_cols)
+    return m.group(1).rstrip() + " " + new_select + m.group(3)
+
+
 def _fix_in_subquery(sql: str) -> str:
     """Add RAW keyword to subqueries inside IN clauses.
 
@@ -287,10 +357,11 @@ def _fix_in_subquery(sql: str) -> str:
                     )
                     if as_match:
                         select_part = select_part[: as_match.start()].strip()
-                    # Check if DISTINCT is present
+                    # Check if DISTINCT is present — N1QL syntax is
+                    # SELECT DISTINCT RAW expr, not SELECT RAW DISTINCT.
                     if select_part.upper().startswith("DISTINCT "):
-                        select_part = "DISTINCT " + select_part[9:]
-                        result.append(f"SELECT RAW {select_part} {rest}")
+                        expr = select_part[9:].strip()
+                        result.append(f"SELECT DISTINCT RAW {expr} {rest}")
                     else:
                         result.append(f"SELECT RAW {select_part} {rest}")
                     result.append(")")
@@ -432,16 +503,26 @@ class CouchbaseCursor:
         if not sql_stripped:
             return
 
-        # Parse expected column order from SELECT clause before param conversion.
-        expected_columns = _parse_select_columns(sql_stripped)
+        # Parse column order for positional ORDER BY / GROUP BY fixes.
+        # This must happen before those fixes modify the SQL.
+        pre_fix_columns = _parse_select_columns(sql_stripped)
 
         # Fix positional ORDER BY and GROUP BY — N1QL doesn't support
         # positional references like ORDER BY 1 or GROUP BY 1, 2, 3.
-        sql_stripped = _fix_positional_order_by(sql_stripped, expected_columns)
-        sql_stripped = _fix_positional_group_by(sql_stripped, expected_columns)
+        sql_stripped = _fix_positional_order_by(sql_stripped, pre_fix_columns)
+        sql_stripped = _fix_positional_group_by(sql_stripped, pre_fix_columns)
 
         # Fix IN (SELECT ...) subqueries — N1QL needs SELECT RAW for scalars.
         sql_stripped = _fix_in_subquery(sql_stripped)
+
+        # Fix aggregation without GROUP BY — N1QL is stricter than SQL.
+        sql_stripped = _fix_aggregate_without_group_by(sql_stripped)
+
+        # Fix bare table names (without keyspace) in DML statements.
+        sql_stripped = self._fix_bare_table_names(sql_stripped)
+
+        # Parse expected columns AFTER all SQL fixes for result mapping.
+        expected_columns = _parse_select_columns(sql_stripped)
 
         n1ql, positional_params = self._convert_params(sql_stripped, params)
 
@@ -499,6 +580,82 @@ class CouchbaseCursor:
                 self._rowcount = len(self._rows)
         except Exception:
             self._rowcount = len(self._rows)
+
+    def _fix_bare_table_names(self, sql: str) -> str:
+        """Fix DML statements that use bare table names without keyspace prefix.
+
+        Raw SQL from Django migrations (RunSQL) may use bare table names
+        like `UPDATE table SET ...`. We add the full keyspace prefix.
+        Also quotes N1QL reserved words used as field identifiers.
+        """
+        # N1QL reserved words that conflict when used as field names.
+        n1ql_field_reserved = {
+            "path", "value", "type", "index", "key", "order",
+            "offset", "limit", "role", "scope", "level", "depth",
+        }
+        # SQL keywords that should NOT be quoted.
+        sql_keywords = {
+            "set", "where", "and", "or", "not", "in", "from", "select",
+            "update", "delete", "insert", "into", "values", "as", "on",
+            "join", "inner", "left", "right", "outer", "having", "group",
+            "by", "order", "asc", "desc", "limit", "offset", "null",
+            "is", "between", "like", "distinct", "count", "sum", "avg",
+            "min", "max", "length", "true", "false",
+        }
+
+        def quote_field_identifiers(text):
+            """Quote field names that are N1QL reserved words."""
+            def replacer(m):
+                word = m.group(0)
+                wl = word.lower()
+                if wl in n1ql_field_reserved and wl not in sql_keywords and not word.startswith("`"):
+                    return f"`{word}`"
+                return word
+            return re.sub(r"(?<![`.\w])(\w+)(?=\s*[=!<>]|\s*\)|\s*,)", replacer, text)
+
+        # Fix UPDATE with bare table name.
+        update_match = re.match(
+            r"(UPDATE\s+)(`?\w+`?)(\s+SET\s+)", sql, re.IGNORECASE
+        )
+        if update_match:
+            table = update_match.group(2).strip("`")
+            if "." not in table:
+                keyspace = f"`{self._bucket_name}`.`{self._scope_name}`.`{table}`"
+                rest = sql[update_match.end():]
+                rest = quote_field_identifiers(rest)
+                return f"UPDATE {keyspace} SET {rest}"
+
+        # Fix DELETE with bare table name.
+        delete_match = re.match(
+            r"(DELETE\s+FROM\s+)(`?\w+`?)(\s)", sql, re.IGNORECASE
+        )
+        if delete_match:
+            table = delete_match.group(2).strip("`")
+            if "." not in table and self._bucket_name not in table:
+                keyspace = f"`{self._bucket_name}`.`{self._scope_name}`.`{table}`"
+                rest = sql[delete_match.end():]
+                return f"DELETE FROM {keyspace} {rest}"
+
+        # Fix SELECT with bare table name in FROM — but only for the first
+        # FROM that doesn't already have a keyspace.
+        select_from_match = re.search(
+            r"(\bFROM\s+)(`?\w+`?)(\s|$)", sql, re.IGNORECASE
+        )
+        if select_from_match:
+            table = select_from_match.group(2).strip("`")
+            if (
+                "." not in table
+                and table.lower() not in ("system", "dual")
+                and self._bucket_name not in sql[: select_from_match.start()]
+            ):
+                keyspace = f"`{self._bucket_name}`.`{self._scope_name}`.`{table}`"
+                sql = (
+                    sql[: select_from_match.start()]
+                    + f"FROM {keyspace}"
+                    + sql[select_from_match.end() - len(select_from_match.group(3)) :]
+                )
+
+        return sql
 
     def executemany(self, sql: str, param_list: list[tuple | list]):
         """Execute the same query with different parameter sets."""

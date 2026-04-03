@@ -222,13 +222,14 @@ class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
         )
         cols_sql = ", ".join(qn(c) for c in col_names)
 
-        sql = f"CREATE INDEX {qn(index_name)} ON {keyspace} ({cols_sql})"
+        sql = f"CREATE INDEX IF NOT EXISTS {qn(index_name)} ON {keyspace} ({cols_sql})"
         try:
             self.connection.ensure_connection()
             self.connection.couchbase_cluster.query(sql).execute()
         except Exception as e:
-            if "already exists" in str(e).lower():
-                pass
+            err = str(e).lower()
+            if "already exists" in err or "12003" in str(e):
+                logger.warning("Index creation skipped for %s: %s", index_name, e)
             else:
                 raise
 
@@ -329,13 +330,20 @@ class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
         return None
 
     def alter_db_table(self, model, old_db_table, new_db_table):
-        """Rename collection — not directly supported, skip for now."""
-        logger.warning(
-            "Couchbase does not support renaming collections. "
-            "Table rename from %s to %s skipped.",
-            old_db_table,
+        """Handle table rename by creating the new collection.
+
+        Couchbase doesn't support renaming collections. We create the new
+        collection and leave the old one (data migration should be handled
+        separately). For fresh installs this is fine since both are empty.
+        """
+        if old_db_table == new_db_table:
+            return
+        logger.info(
+            "Creating new collection %s (rename from %s)",
             new_db_table,
+            old_db_table,
         )
+        self._create_collection_and_index(new_db_table)
 
     def execute(self, sql, params=()):
         """Execute a DDL statement via N1QL."""

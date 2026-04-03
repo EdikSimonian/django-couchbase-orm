@@ -29,14 +29,108 @@ class SQLCompiler(CouchbaseCompilerMixin, base_compiler.SQLCompiler):
         """Generate N1QL SELECT statement.
 
         N1QL does not allow duplicate column names in results (unlike SQL).
-        We always use column aliases to avoid conflicts when JOINs are present
-        (e.g., `table1`.`id` and `table2`.`id` both resolving to `id`).
+        We run the parent as_sql first, then post-process to deduplicate
+        column names by adding aliases only where needed. This avoids
+        forcing aliases on aggregation queries where extra columns would
+        break N1QL's strict GROUP BY.
         """
-        # Always use column aliases in N1QL to avoid duplicate column name errors.
         sql, params = super().as_sql(
-            with_limits=with_limits, with_col_aliases=True
+            with_limits=with_limits, with_col_aliases=with_col_aliases
         )
+        # Deduplicate column names in the SELECT clause for N1QL.
+        sql = self._deduplicate_select_columns(sql)
         return sql, params
+
+    @staticmethod
+    def _deduplicate_select_columns(sql):
+        """Add aliases to duplicate column names in a SELECT statement.
+
+        N1QL doesn't allow two result columns with the same name. If the
+        SELECT has e.g. `t1`.`id`, `t2`.`id`, rename the second to `id__2`.
+        """
+        import re
+
+        m = re.match(
+            r"(SELECT\s+(?:DISTINCT\s+)?)(.*?)(\s+FROM\s+)",
+            sql,
+            re.IGNORECASE | re.DOTALL,
+        )
+        if not m:
+            return sql
+
+        prefix, select_part, from_part = m.group(1), m.group(2), m.group(3)
+        rest = sql[m.end():]
+
+        # Parse column expressions.
+        columns = []
+        depth = 0
+        current = []
+        for ch in select_part:
+            if ch == "(":
+                depth += 1
+                current.append(ch)
+            elif ch == ")":
+                depth -= 1
+                current.append(ch)
+            elif ch == "," and depth == 0:
+                columns.append("".join(current).strip())
+                current = []
+            else:
+                current.append(ch)
+        if current:
+            columns.append("".join(current).strip())
+
+        # Extract the result name for each column (alias or last identifier).
+        def get_result_name(col_expr):
+            as_match = re.search(
+                r"\bAS\s+`?(\w+)`?\s*$", col_expr, re.IGNORECASE
+            )
+            if as_match:
+                return as_match.group(1)
+            backtick = re.search(r"`(\w+)`\s*$", col_expr)
+            if backtick:
+                return backtick.group(1)
+            dot = re.search(r"\.(\w+)\s*$", col_expr)
+            if dot:
+                return dot.group(1)
+            return col_expr.strip()
+
+        names = [get_result_name(c) for c in columns]
+
+        # Check for duplicates.
+        seen = {}
+        has_dups = False
+        for name in names:
+            if name in seen:
+                has_dups = True
+                break
+            seen[name] = True
+
+        if not has_dups:
+            return sql
+
+        # Add unique aliases to duplicates.
+        seen = {}
+        new_columns = []
+        for col_expr, name in zip(columns, names):
+            if name in seen:
+                seen[name] += 1
+                alias = f"{name}__{seen[name]}"
+                # Only add AS if not already aliased.
+                if re.search(r"\bAS\s+", col_expr, re.IGNORECASE):
+                    col_expr = re.sub(
+                        r"\bAS\s+`?\w+`?\s*$",
+                        f"AS `{alias}`",
+                        col_expr,
+                        flags=re.IGNORECASE,
+                    )
+                else:
+                    col_expr = f"{col_expr} AS `{alias}`"
+            else:
+                seen[name] = 1
+            new_columns.append(col_expr)
+
+        return prefix + ", ".join(new_columns) + from_part + rest
 
     def get_from_clause(self):
         """Override FROM clause to use Couchbase keyspaces.
@@ -262,5 +356,5 @@ class SQLUpdateCompiler(CouchbaseCompilerMixin, base_compiler.SQLUpdateCompiler)
         return row_count
 
 
-class SQLAggregateCompiler(CouchbaseCompilerMixin, base_compiler.SQLCompiler):
+class SQLAggregateCompiler(SQLCompiler):
     pass
