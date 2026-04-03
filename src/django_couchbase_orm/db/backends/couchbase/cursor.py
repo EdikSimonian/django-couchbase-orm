@@ -865,7 +865,7 @@ class CouchbaseCursor:
             # 3000 = syntax error (often from unsupported SQL patterns)
             # 4210 = correlated subquery in GROUP BY (unsupported pattern)
             # Return empty result instead of crashing.
-            if err_code in ("3000", "4210") and n1ql.strip().upper().startswith("SELECT"):
+            if err_code in ("3000", "4210") and n1ql.strip().upper().startswith(("SELECT", "DELETE", "UPDATE")):
                 import logging
                 logging.getLogger("django.db.backends.couchbase").warning(
                     "N1QL limitation (error %s): unsupported query pattern. "
