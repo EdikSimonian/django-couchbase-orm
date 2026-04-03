@@ -10,7 +10,32 @@
 {% endblock %}
 
 {% block content %}
+{% if page.body %}
 <div class="cms-content">
     {{ page.body|safe }}
 </div>
+{% endif %}
+
+{% with children=page.get_children.live %}
+{% if children %}
+<div style="margin-top: 32px;">
+    <div class="grid">
+        {% for child in children %}
+        <a href="{{ child.url }}" class="card">
+            <h3>{{ child.title }}</h3>
+            {% if child.specific.date %}
+            <div class="blog-meta">{{ child.specific.date|date:"F j, Y" }}</div>
+            {% endif %}
+            {% if child.specific.intro %}
+            <div class="blog-intro">{{ child.specific.intro }}</div>
+            {% endif %}
+            {% if child.search_description %}
+            <div style="font-size:13px; color:var(--text-muted); margin-top:8px;">{{ child.search_description|truncatewords:20 }}</div>
+            {% endif %}
+        </a>
+        {% endfor %}
+    </div>
+</div>
+{% endif %}
+{% endwith %}
 {% endblock %}
