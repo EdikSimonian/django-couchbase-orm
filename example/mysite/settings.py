@@ -90,7 +90,7 @@ OAUTH2_PROVIDER = {
         "profile": "User profile",
         "email": "User email",
     },
-    "OIDC_USERINFO_ENDPOINT": "beers.oidc.get_claims",
+    "OIDC_USERINFO": "beers.oidc.get_claims",
     "PKCE_REQUIRED": True,
     "ACCESS_TOKEN_EXPIRE_SECONDS": 3600,
     "REFRESH_TOKEN_EXPIRE_SECONDS": 86400,
@@ -153,3 +153,4 @@ STORAGES = {
 }
 
 USE_TZ = False
+SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
