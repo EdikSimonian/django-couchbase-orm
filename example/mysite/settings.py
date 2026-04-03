@@ -90,7 +90,7 @@ OAUTH2_PROVIDER = {
         "profile": "User profile",
         "email": "User email",
     },
-    "OIDC_USERINFO": "beers.oidc.get_claims",
+    "OAUTH2_VALIDATOR_CLASS": "beers.oidc.CustomOIDCValidator",
     "PKCE_REQUIRED": True,
     "ACCESS_TOKEN_EXPIRE_SECONDS": 3600,
     "REFRESH_TOKEN_EXPIRE_SECONDS": 86400,
