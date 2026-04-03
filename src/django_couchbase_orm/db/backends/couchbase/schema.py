@@ -85,15 +85,27 @@ class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
             else:
                 raise
 
-        # Create primary index.
-        try:
-            qn = self.connection.ops.quote_name
-            keyspace = f"{qn(bucket_name)}.{qn(scope_name)}.{qn(collection_name)}"
-            index_sql = f"CREATE PRIMARY INDEX IF NOT EXISTS ON {keyspace}"
-            self.connection.couchbase_cluster.query(index_sql).execute()
-            logger.info("Created primary index on %s", collection_name)
-        except Exception as e:
-            logger.warning("Could not create primary index on %s: %s", collection_name, e)
+        # Create primary index — retry because the collection may not be
+        # queryable immediately after creation.
+        import time
+
+        qn = self.connection.ops.quote_name
+        keyspace = f"{qn(bucket_name)}.{qn(scope_name)}.{qn(collection_name)}"
+        index_sql = f"CREATE PRIMARY INDEX IF NOT EXISTS ON {keyspace}"
+
+        for attempt in range(10):
+            try:
+                self.connection.couchbase_cluster.query(index_sql).execute()
+                logger.info("Created primary index on %s", collection_name)
+                break
+            except Exception as e:
+                if attempt < 9 and "12003" in str(e):
+                    time.sleep(0.5)
+                    continue
+                logger.warning(
+                    "Could not create primary index on %s: %s",
+                    collection_name, e,
+                )
 
     def create_model(self, model):
         """Create a Couchbase collection for the model and any M2M tables."""

@@ -12,6 +12,13 @@ from django.utils import timezone
 class DatabaseOperations(BaseDatabaseOperations):
     compiler_module = "django_couchbase_orm.db.backends.couchbase.compiler"
 
+    # CouchbaseAutoField uses UUIDs (strings), not integers.
+    # Add it to the range map so Django's system checks don't fail.
+    integer_field_ranges = {
+        **BaseDatabaseOperations.integer_field_ranges,
+        "CouchbaseAutoField": (-9223372036854775808, 9223372036854775807),
+    }
+
     # N1QL uses backtick quoting.
     def quote_name(self, name):
         if name.startswith("`") and name.endswith("`"):

@@ -102,6 +102,7 @@ class DatabaseWrapper(BaseDatabaseWrapper):
         "AutoField": "varchar",
         "BigAutoField": "varchar",
         "SmallAutoField": "varchar",
+        "CouchbaseAutoField": "varchar(36)",
         "BinaryField": "text",
         "BooleanField": "boolean",
         "CharField": "varchar(%(max_length)s)",
