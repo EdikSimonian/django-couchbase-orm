@@ -65,7 +65,7 @@ class AuthManager: NSObject, ObservableObject {
 
         do {
             // Step 1: Get the OIDC login URL from App Services
-            let oidcURL = URL(string: "\(appServicesURL)/_oidc?provider=\(oidcProvider)&offline=true")!
+            let oidcURL = URL(string: "\(appServicesURL)/_oidc?provider=default&offline=true")!
             print("[Auth] Starting OIDC flow via App Services: \(oidcURL)")
 
             // Step 2: Follow the redirect to get Django's authorize URL
@@ -158,7 +158,7 @@ class AuthManager: NSObject, ObservableObject {
 
     /// Exchange auth code via App Services _oidc_callback endpoint
     private func exchangeCodeViaAppServices(code: String) async throws {
-        let callbackURL = "\(appServicesURL)/_oidc_callback?provider=\(oidcProvider)&code=\(code)&offline=true"
+        let callbackURL = "\(appServicesURL)/_oidc_callback?provider=default&code=\(code)&offline=true"
         guard let url = URL(string: callbackURL) else {
             throw AuthError.serverError("Invalid callback URL")
         }
