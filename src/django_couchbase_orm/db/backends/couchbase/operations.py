@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import datetime
-import uuid
 
 from django.db.backends.base.operations import BaseDatabaseOperations
 from django.utils import timezone
@@ -34,8 +33,7 @@ class DatabaseOperations(BaseDatabaseOperations):
         return None
 
     def pk_default_value(self):
-        # Generate a UUID for new documents.
-        return f"'{uuid.uuid4()}'"
+        return "NULL"
 
     def last_insert_id(self, cursor, table_name, pk_name):
         return cursor.lastrowid
@@ -193,6 +191,41 @@ class DatabaseOperations(BaseDatabaseOperations):
         if isinstance(value, str):
             return value
         return value
+
+    def convert_datefield_value(self, value, expression, connection):
+        if value is None:
+            return None
+        if isinstance(value, str):
+            from django.utils.dateparse import parse_date
+            return parse_date(value)
+        return value
+
+    def convert_datetimefield_value(self, value, expression, connection):
+        if value is None:
+            return None
+        if isinstance(value, str):
+            from django.utils.dateparse import parse_datetime
+            return parse_datetime(value)
+        return value
+
+    def convert_timefield_value(self, value, expression, connection):
+        if value is None:
+            return None
+        if isinstance(value, str):
+            from django.utils.dateparse import parse_time
+            return parse_time(value)
+        return value
+
+    def get_db_converters(self, expression):
+        converters = super().get_db_converters(expression)
+        internal_type = expression.output_field.get_internal_type()
+        if internal_type == "DateField":
+            converters.append(self.convert_datefield_value)
+        elif internal_type == "DateTimeField":
+            converters.append(self.convert_datetimefield_value)
+        elif internal_type == "TimeField":
+            converters.append(self.convert_timefield_value)
+        return converters
 
     def combine_expression(self, connector, sub_expressions):
         if connector == "||":

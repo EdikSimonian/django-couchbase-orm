@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import uuid
 from datetime import timedelta
 
 from django.db.backends.base.base import BaseDatabaseWrapper
@@ -19,10 +18,11 @@ _autofield_patched = False
 
 
 def _patch_autofields():
-    """Patch Django's AutoField classes to use UUID strings instead of integers.
+    """Patch Django's AutoField classes to accept string-typed integer values.
 
-    Couchbase uses string document keys, so AutoField must produce/accept strings.
-    This is called once when the connection is initialized.
+    Couchbase stores all values as JSON, so integer PKs come back as
+    strings or ints depending on how they were stored. The AutoField
+    must tolerate both without raising ValueError.
     """
     global _autofield_patched
     if _autofield_patched:
@@ -35,24 +35,29 @@ def _patch_autofields():
         field_cls = getattr(model_fields, field_cls_name)
 
         def _make_patched(original_cls):
-            original_get_prep = original_cls.get_prep_value
-            original_get_db_prep = original_cls.get_db_prep_value
-            original_to_python = original_cls.to_python
-
             def get_prep_value(self, value):
                 if value is None:
-                    return str(uuid.uuid4())
-                return str(value)
+                    return None
+                try:
+                    return int(value)
+                except (TypeError, ValueError):
+                    return value
 
             def get_db_prep_value(self, value, connection, prepared=False):
                 if value is None:
-                    return str(uuid.uuid4())
-                return str(value)
+                    return None
+                try:
+                    return int(value)
+                except (TypeError, ValueError):
+                    return value
 
             def to_python(self, value):
                 if value is None:
                     return value
-                return str(value)
+                try:
+                    return int(value)
+                except (TypeError, ValueError):
+                    return value
 
             original_cls.get_prep_value = get_prep_value
             original_cls.get_db_prep_value = get_db_prep_value

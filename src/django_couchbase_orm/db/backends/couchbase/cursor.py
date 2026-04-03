@@ -282,6 +282,163 @@ def _fix_aggregate_without_group_by(sql: str) -> str:
     return m.group(1).rstrip() + " " + new_select + m.group(3)
 
 
+def _deduplicate_select_columns(sql: str) -> str:
+    """Add unique aliases to duplicate column names in a SELECT statement.
+
+    N1QL doesn't allow two result columns with the same name.
+    Handles subqueries in the SELECT list by tracking parenthesis depth.
+    """
+    # Find the top-level FROM (not inside subqueries) by tracking parens.
+    sql_stripped = sql.strip()
+    upper = sql_stripped.upper()
+    if not upper.startswith("SELECT"):
+        return sql
+
+    # Find "SELECT [DISTINCT] " prefix.
+    prefix_match = re.match(r"(SELECT\s+(?:DISTINCT\s+)?)", sql_stripped, re.IGNORECASE)
+    if not prefix_match:
+        return sql
+    prefix = prefix_match.group(1)
+    after_select = sql_stripped[prefix_match.end():]
+
+    # Find the top-level FROM by tracking paren depth.
+    depth = 0
+    from_pos = -1
+    i = 0
+    while i < len(after_select):
+        ch = after_select[i]
+        if ch == "(":
+            depth += 1
+        elif ch == ")":
+            depth -= 1
+        elif depth == 0 and after_select[i:i+5].upper() == "FROM " :
+            from_pos = i
+            break
+        i += 1
+
+    if from_pos == -1:
+        return sql
+
+    select_part = after_select[:from_pos].strip()
+    from_and_rest = after_select[from_pos:]
+
+    # Split columns respecting parentheses (for subqueries).
+    columns = []
+    depth = 0
+    current = []
+    for ch in select_part:
+        if ch == "(":
+            depth += 1
+            current.append(ch)
+        elif ch == ")":
+            depth -= 1
+            current.append(ch)
+        elif ch == "," and depth == 0:
+            columns.append("".join(current).strip())
+            current = []
+        else:
+            current.append(ch)
+    if current:
+        columns.append("".join(current).strip())
+
+    if len(columns) <= 1:
+        return sql
+
+    def get_result_name(col_expr):
+        # If it's a subquery (...) AS alias, get the alias.
+        as_match = re.search(r"\bAS\s+`?(\w+)`?\s*$", col_expr, re.IGNORECASE)
+        if as_match:
+            return as_match.group(1)
+        # If it starts with ( it's a subquery without alias — skip.
+        if col_expr.strip().startswith("("):
+            return None
+        backtick = re.search(r"`(\w+)`\s*$", col_expr)
+        if backtick:
+            return backtick.group(1)
+        dot = re.search(r"\.(\w+)\s*$", col_expr)
+        if dot:
+            return dot.group(1)
+        return col_expr.strip()
+
+    names = [get_result_name(c) for c in columns]
+
+    # Check for duplicates (ignoring None).
+    seen = {}
+    has_dups = False
+    for name in names:
+        if name is None:
+            continue
+        if name in seen:
+            has_dups = True
+            break
+        seen[name] = True
+
+    if not has_dups:
+        return sql
+
+    # Add unique aliases to duplicates.
+    seen = {}
+    new_columns = []
+    for col_expr, name in zip(columns, names):
+        if name is not None and name in seen:
+            seen[name] += 1
+            alias = f"{name}__{seen[name]}"
+            if re.search(r"\bAS\s+`?\w+`?\s*$", col_expr, re.IGNORECASE):
+                col_expr = re.sub(
+                    r"\bAS\s+`?\w+`?\s*$",
+                    f"AS `{alias}`",
+                    col_expr,
+                    flags=re.IGNORECASE,
+                )
+            else:
+                col_expr = f"{col_expr} AS `{alias}`"
+        else:
+            if name is not None:
+                seen[name] = 1
+        new_columns.append(col_expr)
+
+    return prefix + ", ".join(new_columns) + " " + from_and_rest
+
+
+def _fix_cast(sql: str) -> str:
+    """Replace SQL CAST(expr AS type) with N1QL type conversion functions.
+
+    N1QL doesn't support CAST syntax. It uses TONUMBER(), TOSTRING(), etc.
+    """
+    cast_map = {
+        "integer": "TONUMBER",
+        "int": "TONUMBER",
+        "bigint": "TONUMBER",
+        "smallint": "TONUMBER",
+        "float": "TONUMBER",
+        "real": "TONUMBER",
+        "double": "TONUMBER",
+        "numeric": "TONUMBER",
+        "decimal": "TONUMBER",
+        "number": "TONUMBER",
+        "text": "TOSTRING",
+        "varchar": "TOSTRING",
+        "char": "TOSTRING",
+        "boolean": "TOBOOLEAN",
+        "bool": "TOBOOLEAN",
+    }
+
+    def replace_cast(match):
+        expr = match.group(1).strip()
+        type_name = match.group(2).strip().lower()
+        # Strip length specifiers like varchar(255)
+        base_type = type_name.split("(")[0].strip()
+        func = cast_map.get(base_type, "TOSTRING")
+        return f"{func}({expr})"
+
+    return re.sub(
+        r"\bCAST\s*\(\s*(.*?)\s+AS\s+(\w+(?:\([^)]*\))?)\s*\)",
+        replace_cast,
+        sql,
+        flags=re.IGNORECASE,
+    )
+
+
 def _fix_in_subquery(sql: str) -> str:
     """Add RAW keyword to subqueries inside IN clauses.
 
@@ -520,6 +677,28 @@ class CouchbaseCursor:
 
         # Fix bare table names (without keyspace) in DML statements.
         sql_stripped = self._fix_bare_table_names(sql_stripped)
+
+        # Fix CAST(x AS type) — N1QL uses TOSTRING/TONUMBER/TOBOOLEAN instead.
+        sql_stripped = _fix_cast(sql_stripped)
+
+        # Fix IS NULL / IS NOT NULL — N1QL distinguishes between NULL and
+        # MISSING (field doesn't exist in document). Django expects IS NULL
+        # to match both. We use IS VALUED / IS NOT VALUED which covers both.
+        sql_stripped = re.sub(
+            r"(`[^`]+`(?:\.`[^`]+`)*)\s+IS\s+NOT\s+NULL\b",
+            r"\1 IS VALUED",
+            sql_stripped,
+            flags=re.IGNORECASE,
+        )
+        sql_stripped = re.sub(
+            r"(`[^`]+`(?:\.`[^`]+`)*)\s+IS\s+NULL\b",
+            r"\1 IS NOT VALUED",
+            sql_stripped,
+            flags=re.IGNORECASE,
+        )
+
+        # Deduplicate column names — N1QL doesn't allow duplicate result names.
+        sql_stripped = _deduplicate_select_columns(sql_stripped)
 
         # Parse expected columns AFTER all SQL fixes for result mapping.
         expected_columns = _parse_select_columns(sql_stripped)

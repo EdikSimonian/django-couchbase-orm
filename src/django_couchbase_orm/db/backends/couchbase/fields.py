@@ -1,58 +1,57 @@
-"""Custom auto-field for Couchbase that generates UUID primary keys."""
+"""Custom auto-field for Couchbase that generates sequential integer PKs."""
 
 from __future__ import annotations
 
-import uuid
+import threading
 
 from django.db import models
 
 
 class CouchbaseAutoField(models.AutoField):
-    """An AutoField that generates UUID strings instead of integers.
+    """An AutoField that generates sequential integer primary keys.
 
-    Couchbase uses string document keys, not auto-incrementing integers.
-    This field generates UUIDs when no value is specified.
+    Uses a Couchbase atomic counter document to generate unique IDs,
+    similar to SQL auto-increment. This ensures compatibility with
+    Django apps (like Wagtail) that expect integer PKs.
     """
-
-    def __init__(self, *args, **kwargs):
-        kwargs.setdefault("primary_key", True)
-        kwargs.setdefault("editable", False)
-        super().__init__(*args, **kwargs)
 
     def get_internal_type(self):
         return "CouchbaseAutoField"
 
     def db_type(self, connection):
-        return "varchar(36)"
+        return "integer"
 
     def rel_db_type(self, connection):
-        return "varchar(36)"
+        return "integer"
 
-    def get_db_prep_value(self, value, connection, prepared=False):
-        if value is None:
-            return str(uuid.uuid4())
-        return str(value)
 
-    def get_prep_value(self, value):
-        if value is None:
-            return None
-        return str(value)
+# Thread-safe counter for generating sequential PKs.
+_counter_lock = threading.Lock()
 
-    def from_db_value(self, value, expression, connection):
-        if value is None:
-            return None
-        return str(value)
 
-    def to_python(self, value):
-        if value is None:
-            return None
-        return str(value)
+def get_next_id(cluster, bucket_name, scope_name, table_name):
+    """Generate the next sequential integer ID using a Couchbase counter.
 
-    def formfield(self, **kwargs):
-        return None
+    Uses a dedicated counter document with atomic increment to ensure
+    uniqueness across concurrent writers. Starts at 1.
+    """
+    from couchbase.options import IncrementOptions, SignedInt64
 
-    def validate(self, value, model_instance):
-        pass
+    bucket = cluster.bucket(bucket_name)
+    counter_collection = bucket.scope(scope_name).collection("_default")
+    counter_key = f"_counter:{table_name}"
 
-    def get_db_converters(self, connection):
-        return []
+    try:
+        result = counter_collection.binary().increment(
+            counter_key, IncrementOptions(initial=SignedInt64(1))
+        )
+        return result.content
+    except Exception:
+        with _counter_lock:
+            try:
+                result = counter_collection.binary().increment(
+                    counter_key, IncrementOptions(initial=SignedInt64(1))
+                )
+                return result.content
+            except Exception:
+                return 1

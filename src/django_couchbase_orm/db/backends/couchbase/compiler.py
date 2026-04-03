@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import uuid
 from itertools import chain
 
 from django.db.models.sql import compiler as base_compiler
@@ -37,100 +36,7 @@ class SQLCompiler(CouchbaseCompilerMixin, base_compiler.SQLCompiler):
         sql, params = super().as_sql(
             with_limits=with_limits, with_col_aliases=with_col_aliases
         )
-        # Deduplicate column names in the SELECT clause for N1QL.
-        sql = self._deduplicate_select_columns(sql)
         return sql, params
-
-    @staticmethod
-    def _deduplicate_select_columns(sql):
-        """Add aliases to duplicate column names in a SELECT statement.
-
-        N1QL doesn't allow two result columns with the same name. If the
-        SELECT has e.g. `t1`.`id`, `t2`.`id`, rename the second to `id__2`.
-        """
-        import re
-
-        m = re.match(
-            r"(SELECT\s+(?:DISTINCT\s+)?)(.*?)(\s+FROM\s+)",
-            sql,
-            re.IGNORECASE | re.DOTALL,
-        )
-        if not m:
-            return sql
-
-        prefix, select_part, from_part = m.group(1), m.group(2), m.group(3)
-        rest = sql[m.end():]
-
-        # Parse column expressions.
-        columns = []
-        depth = 0
-        current = []
-        for ch in select_part:
-            if ch == "(":
-                depth += 1
-                current.append(ch)
-            elif ch == ")":
-                depth -= 1
-                current.append(ch)
-            elif ch == "," and depth == 0:
-                columns.append("".join(current).strip())
-                current = []
-            else:
-                current.append(ch)
-        if current:
-            columns.append("".join(current).strip())
-
-        # Extract the result name for each column (alias or last identifier).
-        def get_result_name(col_expr):
-            as_match = re.search(
-                r"\bAS\s+`?(\w+)`?\s*$", col_expr, re.IGNORECASE
-            )
-            if as_match:
-                return as_match.group(1)
-            backtick = re.search(r"`(\w+)`\s*$", col_expr)
-            if backtick:
-                return backtick.group(1)
-            dot = re.search(r"\.(\w+)\s*$", col_expr)
-            if dot:
-                return dot.group(1)
-            return col_expr.strip()
-
-        names = [get_result_name(c) for c in columns]
-
-        # Check for duplicates.
-        seen = {}
-        has_dups = False
-        for name in names:
-            if name in seen:
-                has_dups = True
-                break
-            seen[name] = True
-
-        if not has_dups:
-            return sql
-
-        # Add unique aliases to duplicates.
-        seen = {}
-        new_columns = []
-        for col_expr, name in zip(columns, names):
-            if name in seen:
-                seen[name] += 1
-                alias = f"{name}__{seen[name]}"
-                # Only add AS if not already aliased.
-                if re.search(r"\bAS\s+", col_expr, re.IGNORECASE):
-                    col_expr = re.sub(
-                        r"\bAS\s+`?\w+`?\s*$",
-                        f"AS `{alias}`",
-                        col_expr,
-                        flags=re.IGNORECASE,
-                    )
-                else:
-                    col_expr = f"{col_expr} AS `{alias}`"
-            else:
-                seen[name] = 1
-            new_columns.append(col_expr)
-
-        return prefix + ", ".join(new_columns) + from_part + rest
 
     def get_from_clause(self):
         """Override FROM clause to use Couchbase keyspaces.
@@ -180,14 +86,26 @@ class SQLInsertCompiler(CouchbaseCompilerMixin, base_compiler.SQLInsertCompiler)
     returning_fields = None
     returning_params = ()
 
+    def _generate_pk(self, table_name):
+        """Generate a sequential integer PK using a Couchbase counter."""
+        from .fields import get_next_id
+
+        return get_next_id(
+            self.connection.connection,
+            self.connection.settings_dict["NAME"],
+            self.connection.settings_dict.get("OPTIONS", {}).get("SCOPE", "_default"),
+            table_name,
+        )
+
     def as_sql(self):
-        """Generate N1QL INSERT statements.
+        """Generate N1QL UPSERT statements.
 
-        Couchbase INSERT syntax:
-            INSERT INTO keyspace (KEY, VALUE)
-            VALUES ($uuid, {field1: $val1, field2: $val2, ...})
+        Couchbase UPSERT syntax:
+            UPSERT INTO keyspace (KEY, VALUE)
+            VALUES ($id, {field1: $val1, field2: $val2, ...})
 
-        Each document is inserted as a JSON object with a UUID document key.
+        Each document is inserted as a JSON object with a sequential
+        integer document key (for compatibility with Django/Wagtail).
         """
         opts = self.query.get_meta()
         qn = self.connection.ops.quote_name
@@ -210,10 +128,10 @@ class SQLInsertCompiler(CouchbaseCompilerMixin, base_compiler.SQLInsertCompiler)
 
                     if field.primary_key:
                         if value is None or (hasattr(value, "as_sql")):
-                            doc_id = str(uuid.uuid4())
+                            doc_id = self._generate_pk(opts.db_table)
                         else:
-                            doc_id = str(value)
-                        # Also store PK in document body so SELECT can find it.
+                            doc_id = value
+                        # Store PK in document body so SELECT can find it.
                         fields_data[col_name] = doc_id
                         continue
 
@@ -227,12 +145,13 @@ class SQLInsertCompiler(CouchbaseCompilerMixin, base_compiler.SQLInsertCompiler)
                         fields_data[col_name] = value
 
             if doc_id is None:
-                doc_id = str(uuid.uuid4())
+                doc_id = self._generate_pk(opts.db_table)
                 fields_data[pk_col_name] = doc_id
 
             # Use UPSERT so re-saving with the same PK works (no duplicate key errors).
+            # Couchbase document KEY must be a string.
             sql = f"UPSERT INTO {keyspace} (KEY, VALUE) VALUES (%s, %s)"
-            params = (doc_id, fields_data)
+            params = (str(doc_id), fields_data)
             result_sqls.append((sql, params))
 
             # Store the doc_id so execute_sql can retrieve it.

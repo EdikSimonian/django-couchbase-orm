@@ -227,7 +227,6 @@ class TestModelCRUD:
         username = f"testuser_{uuid.uuid4().hex[:8]}"
         user = User.objects.create_user(username, f"{username}@test.com", "pass123")
         assert user.pk is not None
-        assert isinstance(user.pk, str)
 
         retrieved = User.objects.get(pk=user.pk)
         assert retrieved.username == username
@@ -236,14 +235,14 @@ class TestModelCRUD:
         # Cleanup
         user.delete()
 
-    def test_create_sets_uuid_pk(self):
+    def test_create_sets_integer_pk(self):
         from django.contrib.auth.models import Group
 
         name = f"group_{uuid.uuid4().hex[:8]}"
         group = Group.objects.create(name=name)
         assert group.pk is not None
-        # PK should look like a UUID string.
-        assert len(str(group.pk)) >= 32
+        assert isinstance(group.pk, int)
+        assert group.pk >= 1
         group.delete()
 
     def test_filter(self):
