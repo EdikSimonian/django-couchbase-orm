@@ -1,5 +1,7 @@
 # django-couchbase-orm
 
+[![CI](https://github.com/EdikSimonian/django-couchbase-orm/actions/workflows/ci.yml/badge.svg)](https://github.com/EdikSimonian/django-couchbase-orm/actions/workflows/ci.yml)
+[![Coverage](https://img.shields.io/endpoint?url=https://gist.githubusercontent.com/EdikSimonian/81d4c53b76d523240e3213a0a9f4b3b7/raw/coverage.json)](https://github.com/EdikSimonian/django-couchbase-orm/actions/workflows/ci.yml)
 [![PyPI](https://img.shields.io/pypi/v/django-couchbase-orm?cacheSeconds=60)](https://pypi.org/project/django-couchbase-orm/)
 [![Python](https://img.shields.io/pypi/pyversions/django-couchbase-orm)](https://pypi.org/project/django-couchbase-orm/)
 [![License](https://img.shields.io/github/license/EdikSimonian/django-couchbase-orm)](https://github.com/EdikSimonian/django-couchbase-orm/blob/main/LICENSE)
@@ -210,14 +212,28 @@ If you use the database backend, the Document API auto-derives its config from `
 
 ## Tests
 
-940+ tests covering the database backend and Document API:
+**940+ tests** across 38 test modules, tested on Python 3.10 – 3.13.
+
+| Suite | Tests | What's Covered |
+|-------|------:|----------------|
+| Document API | 784 | Fields, QuerySet, Manager, Document CRUD, signals, pagination, migrations, auth, sessions |
+| Backend Phase 1 | 57 | Connection, cursor, CRUD, admin login, content types |
+| Backend Phase 2 | 37 | FK JOINs, M2M, annotate, lookups, F/Q expressions |
+| Backend Phase 3 | 23 | Django admin, auth permissions, forms, sessions |
+| Backend Phase 4 | 18 | Migrations, schema ops, custom models |
+| Backend Phase 5 | 21 | Shared connections, subqueries, bulk ops, edge cases |
+
+**Overall: 91%+ unit test coverage, 0 known vulnerabilities (pip-audit clean).**
 
 ```bash
-# Document API tests (784 tests)
+# Document API tests (no Couchbase required)
 pytest tests/
 
-# Backend integration tests (156 tests, requires Couchbase)
+# Backend integration tests (requires local Couchbase)
 DJANGO_SETTINGS_MODULE=tests.test_backend_settings pytest tests/test_backend_*.py
+
+# Coverage
+coverage run -m pytest tests/ && coverage report --show-missing --include="src/*"
 ```
 
 ## Development
