@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from .models import Beer, Brewery
+from .models import Beer, Brewery, Rating
 
 
 @admin.register(Brewery)
@@ -16,3 +16,10 @@ class BeerAdmin(admin.ModelAdmin):
     search_fields = ["name", "style"]
     list_filter = ["style"]
     list_select_related = ["brewery"]
+
+
+@admin.register(Rating)
+class RatingAdmin(admin.ModelAdmin):
+    list_display = ["beer", "username", "score", "created_at"]
+    list_filter = ["score"]
+    search_fields = ["username", "beer__name"]

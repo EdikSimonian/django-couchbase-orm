@@ -65,20 +65,47 @@ INSTALLED_APPS = [
     # Your apps
     "home",
     "beers",
-    # API
+    # API & Auth
     "rest_framework",
+    "oauth2_provider",
+    "corsheaders",
 ]
 
 REST_FRAMEWORK = {
     "DEFAULT_PERMISSION_CLASSES": ["rest_framework.permissions.AllowAny"],
+    "DEFAULT_AUTHENTICATION_CLASSES": [
+        "oauth2_provider.contrib.rest_framework.OAuth2Authentication",
+        "rest_framework.authentication.SessionAuthentication",
+    ],
     "DEFAULT_PAGINATION_CLASS": "rest_framework.pagination.PageNumberPagination",
     "PAGE_SIZE": 50,
 }
+
+# --- OIDC Provider (django-oauth-toolkit) ---
+OAUTH2_PROVIDER = {
+    "OIDC_ENABLED": True,
+    "OIDC_RSA_PRIVATE_KEY": os.environ.get("OIDC_RSA_PRIVATE_KEY", ""),
+    "SCOPES": {
+        "openid": "OpenID Connect",
+        "profile": "User profile",
+        "email": "User email",
+    },
+    "OIDC_USERINFO_ENDPOINT": "beers.oidc.get_claims",
+    "PKCE_REQUIRED": True,
+    "ACCESS_TOKEN_EXPIRE_SECONDS": 3600,
+    "REFRESH_TOKEN_EXPIRE_SECONDS": 86400,
+    "ROTATE_REFRESH_TOKEN": True,
+    "ALLOWED_REDIRECT_URI_SCHEMES": ["https", "brewsync"],
+}
+
+# --- CORS ---
+CORS_ALLOW_ALL_ORIGINS = True
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
     "whitenoise.middleware.WhiteNoiseMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
+    "corsheaders.middleware.CorsMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
