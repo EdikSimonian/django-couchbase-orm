@@ -42,7 +42,7 @@
 		7F4582592EC95A43BFD0F1B8 /* BreweryListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BreweryListView.swift; sourceTree = "<group>"; };
 		8667BEF65EF46B90ABB6E525 /* BeerDetailViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BeerDetailViewModel.swift; sourceTree = "<group>"; };
 		899A78E977A2F2F02117C86C /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
-		9059FB563330BB890B4A9204 /* BrewSync.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = BrewSync.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		9059FB563330BB890B4A9204 /* BrewSync.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = BrewSync.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		95C7CDB1AF378DEF5208CA03 /* LoginView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoginView.swift; sourceTree = "<group>"; };
 		9A1DE9B65B6BA31521DBB085 /* BeerListViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BeerListViewModel.swift; sourceTree = "<group>"; };
 		9B56E2E51C5644CB4E0F11C7 /* ReplicatorManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReplicatorManager.swift; sourceTree = "<group>"; };
@@ -301,6 +301,7 @@
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = U8L62AM7NK;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = BrewSync/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = BrewSync;
@@ -327,6 +328,7 @@
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = U8L62AM7NK;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = BrewSync/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = BrewSync;

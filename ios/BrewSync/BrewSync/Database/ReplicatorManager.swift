@@ -5,10 +5,8 @@ import CouchbaseLiteSwift
 class ReplicatorManager: ObservableObject {
     static let shared = ReplicatorManager()
 
-    private let appServicesURL = "wss://lcqfknrvnr1vpm5x.apps.cloud.couchbase.com:4984/brewsync"
-    private let appServicesHTTP = "https://lcqfknrvnr1vpm5x.apps.cloud.couchbase.com:4984/brewsync"
-
-    // The OIDC provider name as configured in Capella App Services
+    private let appServicesWSS = "wss://lcqfknrvnr1vpm5x.apps.cloud.couchbase.com:4984/brewsync"
+    private let appServicesHTTPS = "https://lcqfknrvnr1vpm5x.apps.cloud.couchbase.com:4984/brewsync"
     private let oidcProviderName = "django"
 
     private var replicator: Replicator?
@@ -27,127 +25,30 @@ class ReplicatorManager: ObservableObject {
 
     private init() {}
 
-    func start() {
+    /// Get the OIDC login URL from App Services (for use in ASWebAuthenticationSession)
+    var oidcLoginURL: URL? {
+        URL(string: "\(appServicesHTTPS)/_oidc?provider=\(oidcProviderName)&offline=true")
+    }
+
+    /// Start replication with a session ID obtained from App Services OIDC flow
+    func start(sessionID: String? = nil) {
         guard DatabaseManager.shared.database != nil else {
             print("[Replicator] Database not initialized")
             return
         }
 
-        guard let idToken = KeychainHelper.load(key: "id_token") else {
-            print("[Replicator] No ID token available")
+        guard let url = URL(string: appServicesWSS) else { return }
+
+        // Use provided session or try stored one
+        let session = sessionID ?? KeychainHelper.load(key: "sync_session")
+        guard let session = session, !session.isEmpty else {
+            print("[Replicator] No sync session available")
+            status = .error
             return
         }
 
-        status = .connecting
-
-        // Exchange the ID token for a Sync Gateway session
-        Task {
-            do {
-                let sessionID = try await getSession(idToken: idToken)
-                print("[Replicator] Got session: \(sessionID.prefix(20))...")
-                await MainActor.run {
-                    self.startReplicator(sessionID: sessionID)
-                }
-            } catch {
-                print("[Replicator] Session exchange failed: \(error)")
-                // Fallback: try direct basic auth if session exchange fails
-                await MainActor.run {
-                    self.startReplicatorWithToken(idToken: idToken)
-                }
-            }
-        }
-    }
-
-    /// Exchange OIDC ID token for an App Services session cookie
-    private func getSession(idToken: String) async throws -> String {
-        // POST to _oidc_callback with the token
-        let url = URL(string: "\(appServicesHTTP)/_oidc_callback?provider=\(oidcProviderName)&id_token=\(idToken)")!
-        var request = URLRequest(url: url)
-        request.httpMethod = "GET"
-
-        print("[Replicator] Exchanging token at: \(appServicesHTTP)/_oidc_callback")
-
-        let (data, response) = try await URLSession.shared.data(for: request)
-        guard let httpResponse = response as? HTTPURLResponse else {
-            throw ReplicatorError.sessionFailed("No HTTP response")
-        }
-
-        print("[Replicator] Session response status: \(httpResponse.statusCode)")
-        if let body = String(data: data, encoding: .utf8) {
-            print("[Replicator] Session response: \(body.prefix(200))")
-        }
-
-        if httpResponse.statusCode == 200 {
-            // Look for SyncGatewaySession cookie
-            if let cookies = HTTPCookieStorage.shared.cookies(for: url) {
-                for cookie in cookies {
-                    print("[Replicator] Cookie: \(cookie.name) = \(cookie.value.prefix(20))...")
-                    if cookie.name == "SyncGatewaySession" {
-                        return cookie.value
-                    }
-                }
-            }
-
-            // Also check Set-Cookie header
-            if let setCookie = httpResponse.value(forHTTPHeaderField: "Set-Cookie"),
-               let sessionRange = setCookie.range(of: "SyncGatewaySession=") {
-                let afterPrefix = setCookie[sessionRange.upperBound...]
-                let sessionValue = String(afterPrefix.prefix(while: { $0 != ";" }))
-                return sessionValue
-            }
-
-            // Try parsing JSON response for session_id
-            if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-               let sessionID = json["session_id"] as? String {
-                return sessionID
-            }
-        }
-
-        // Try POST to _session endpoint as alternative
-        return try await getSessionViaPost(idToken: idToken)
-    }
-
-    /// Alternative: POST token to _session endpoint
-    private func getSessionViaPost(idToken: String) async throws -> String {
-        let url = URL(string: "\(appServicesHTTP)/_session")!
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.httpBody = try JSONSerialization.data(withJSONObject: [
-            "token": idToken,
-            "provider": oidcProviderName,
-        ])
-
-        print("[Replicator] Trying POST _session")
-
-        let (data, response) = try await URLSession.shared.data(for: request)
-        guard let httpResponse = response as? HTTPURLResponse else {
-            throw ReplicatorError.sessionFailed("No HTTP response")
-        }
-
-        print("[Replicator] _session response: \(httpResponse.statusCode)")
-        if let body = String(data: data, encoding: .utf8) {
-            print("[Replicator] _session body: \(body.prefix(300))")
-        }
-
-        if httpResponse.statusCode == 200,
-           let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-           let sessionID = json["session_id"] as? String {
-            return sessionID
-        }
-
-        // Check cookies
-        if let cookies = HTTPCookieStorage.shared.cookies(for: url) {
-            for cookie in cookies where cookie.name == "SyncGatewaySession" {
-                return cookie.value
-            }
-        }
-
-        throw ReplicatorError.sessionFailed("Could not get session (status \(httpResponse.statusCode))")
-    }
-
-    private func startReplicator(sessionID: String) {
-        guard let url = URL(string: appServicesURL) else { return }
+        // Save for reconnection
+        KeychainHelper.save(key: "sync_session", value: session)
 
         let endpoint = URLEndpoint(url: url)
         var collections: [Collection] = []
@@ -159,33 +60,11 @@ class ReplicatorManager: ObservableObject {
         config.replicatorType = .pushAndPull
         config.continuous = true
         config.addCollections(collections)
-        config.authenticator = SessionAuthenticator(sessionID: sessionID)
+        config.authenticator = SessionAuthenticator(sessionID: session, cookieName: "SyncGatewaySession")
 
-        print("[Replicator] Starting with SessionAuthenticator")
-        configureAndStart(config: config)
-    }
+        print("[Replicator] Starting with session: \(session.prefix(20))...")
+        print("[Replicator] Collections: \(collections.map { $0.name })")
 
-    /// Fallback: try with token in headers
-    private func startReplicatorWithToken(idToken: String) {
-        guard let url = URL(string: appServicesURL) else { return }
-
-        let endpoint = URLEndpoint(url: url)
-        var collections: [Collection] = []
-        if let c = DatabaseManager.shared.beerCollection { collections.append(c) }
-        if let c = DatabaseManager.shared.breweryCollection { collections.append(c) }
-        if let c = DatabaseManager.shared.ratingCollection { collections.append(c) }
-
-        var config = ReplicatorConfiguration(target: endpoint)
-        config.replicatorType = .pushAndPull
-        config.continuous = true
-        config.addCollections(collections)
-        config.headers = ["Authorization": "Bearer \(idToken)"]
-
-        print("[Replicator] Fallback: Starting with Bearer token header")
-        configureAndStart(config: config)
-    }
-
-    private func configureAndStart(config: ReplicatorConfiguration) {
         replicator = Replicator(config: config)
 
         listenerToken = replicator?.addChangeListener { [weak self] change in
@@ -197,9 +76,11 @@ class ReplicatorManager: ObservableObject {
                 case .idle:
                     self?.status = .connected
                     self?.isConnected = true
+                    print("[Replicator] Idle — synced \(change.status.progress.completed) docs")
                 case .busy:
                     self?.status = .connected
                     self?.isConnected = true
+                    print("[Replicator] Busy — \(change.status.progress.completed)/\(change.status.progress.total)")
                 case .connecting:
                     self?.status = .connecting
                     self?.isConnected = false
@@ -212,18 +93,13 @@ class ReplicatorManager: ObservableObject {
 
                 if let error = change.status.error {
                     print("[Replicator] Error: \(error)")
-                    print("[Replicator] Activity: \(change.status.activity)")
-                    print("[Replicator] Progress: \(change.status.progress.completed)/\(change.status.progress.total)")
                     self?.status = .error
-                }
-
-                if change.status.activity == .idle {
-                    print("[Replicator] Synced: \(change.status.progress.completed) docs")
                 }
             }
         }
 
         replicator?.start()
+        status = .connecting
     }
 
     func stop() {
@@ -235,15 +111,5 @@ class ReplicatorManager: ObservableObject {
         replicator = nil
         status = .stopped
         isConnected = false
-    }
-}
-
-enum ReplicatorError: LocalizedError {
-    case sessionFailed(String)
-
-    var errorDescription: String? {
-        switch self {
-        case .sessionFailed(let msg): return "Session failed: \(msg)"
-        }
     }
 }
