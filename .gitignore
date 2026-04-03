@@ -42,3 +42,7 @@ Thumbs.db
 
 # Couchbase
 *.log
+
+# Wagtail uploaded media
+images/
+original_images/

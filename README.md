@@ -1,731 +1,222 @@
 # django-couchbase-orm
 
-[![CI](https://github.com/EdikSimonian/django-couchbase-orm/actions/workflows/ci.yml/badge.svg)](https://github.com/EdikSimonian/django-couchbase-orm/actions/workflows/ci.yml)
-[![Coverage](https://img.shields.io/endpoint?url=https://gist.githubusercontent.com/EdikSimonian/81d4c53b76d523240e3213a0a9f4b3b7/raw/coverage.json)](https://github.com/EdikSimonian/django-couchbase-orm/actions/workflows/ci.yml)
 [![PyPI](https://img.shields.io/pypi/v/django-couchbase-orm?cacheSeconds=60)](https://pypi.org/project/django-couchbase-orm/)
 [![Python](https://img.shields.io/pypi/pyversions/django-couchbase-orm)](https://pypi.org/project/django-couchbase-orm/)
 [![License](https://img.shields.io/github/license/EdikSimonian/django-couchbase-orm)](https://github.com/EdikSimonian/django-couchbase-orm/blob/main/LICENSE)
 
-A Django-style ORM for Couchbase. Define models, run queries, and manage documents using familiar Django patterns with Couchbase Server as the backend.
+Use Couchbase as your Django database. Drop-in backend for `django.db.models.Model` plus a standalone Document API for Couchbase-native patterns.
 
-**Live Demo:** [django-couchbase-orm-production.up.railway.app](https://django-couchbase-orm-production.up.railway.app) | **PyPI:** [django-couchbase-orm](https://pypi.org/project/django-couchbase-orm/)
+## Two Ways to Use It
 
-Works **alongside** Django's built-in ORM — use `django.db.models.Model` for relational data and `django_couchbase_orm.Document` for Couchbase data in the same project. Or go fully Couchbase with the included session and auth backends.
+### 1. Django Database Backend
 
-## Features
-
-- Declarative document models with typed fields
-- Django-style QuerySet with filtering, ordering, slicing, and Q objects
-- N1QL query builder with parameterized queries (injection-safe)
-- KV-optimized `get(pk=...)` for fast single-document lookups
-- Sub-document operations (partial reads/writes)
-- Signals: `pre_save`, `post_save`, `pre_delete`, `post_delete`
-- Couchbase session backend (TTL-based expiry)
-- Couchbase auth backend (User model, authentication)
-- Embedded documents, references, compound fields
-- Auto-timestamps (`auto_now`, `auto_now_add`)
-- Aggregation: `Count`, `Sum`, `Avg`, `Min`, `Max`
-- `select_related()` for ReferenceField prefetching
-- `CouchbasePaginator` with Django-style Page objects
-- `bulk_create()` and `bulk_update()` for batch operations
-- **Migrations framework**: auto-detect changes, generate migration files, apply/revert with dependency resolution
-- Management commands: `cb_ensure_indexes`, `cb_create_collections`, `cb_makemigrations`, `cb_migrate`
-
-## Requirements
-
-- Python 3.10+
-- Django 4.2+
-- Couchbase Python SDK 4.1+
-
-## Installation
-
-```bash
-pip install django-couchbase-orm
-```
-
-## Quick Start
-
-### 1. Configure Django settings
+Standard Django models work transparently with Couchbase. Admin, forms, DRF, Wagtail - everything just works.
 
 ```python
 # settings.py
-INSTALLED_APPS = [
-    ...
-    "django_couchbase_orm",
-]
-
-COUCHBASE = {
+DATABASES = {
     "default": {
-        "CONNECTION_STRING": "couchbases://your-cluster.cloud.couchbase.com",
-        "USERNAME": "your-user",
-        "PASSWORD": "your-password",
-        "BUCKET": "your-bucket",
-        "SCOPE": "_default",  # optional, defaults to _default
+        "ENGINE": "django_couchbase_orm.db.backends.couchbase",
+        "NAME": "mybucket",
+        "USER": "Administrator",
+        "PASSWORD": "password",
+        "HOST": "couchbase://localhost",
     }
 }
+DEFAULT_AUTO_FIELD = "django_couchbase_orm.db.backends.couchbase.fields.CouchbaseAutoField"
+
+# models.py - standard Django models, no changes needed
+from django.db import models
+
+class Article(models.Model):
+    title = models.CharField(max_length=200)
+    body = models.TextField()
+    author = models.ForeignKey("auth.User", on_delete=models.CASCADE)
+    published = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
 ```
 
-### 2. Define documents
+Everything works: `makemigrations`, `migrate`, `createsuperuser`, Django admin, ModelForms, DRF serializers, Wagtail CMS.
+
+### 2. Document API
+
+For Couchbase-native patterns - subdoc operations, KV fast-path, embedded documents.
 
 ```python
-from django_couchbase_orm import Document, StringField, IntegerField, FloatField, BooleanField, DateTimeField
+# settings.py
+COUCHBASE = {
+    "default": {
+        "CONNECTION_STRING": "couchbase://localhost",
+        "USERNAME": "Administrator",
+        "PASSWORD": "password",
+        "BUCKET": "mybucket",
+    }
+}
 
-class Brewery(Document):
-    name = StringField(required=True)
-    city = StringField()
-    state = StringField()
-    country = StringField()
-    description = StringField()
-
-    class Meta:
-        collection_name = "_default"
-        doc_type_field = "type"  # field name for type discriminator
+# documents.py
+from django_couchbase_orm import Document, StringField, FloatField
 
 class Beer(Document):
     name = StringField(required=True)
     abv = FloatField()
     style = StringField()
-    brewery_id = StringField()
 
     class Meta:
-        collection_name = "_default"
-        doc_type_field = "type"
+        collection_name = "beers"
 ```
 
-### 3. Use it
+Both APIs can coexist in the same project. They share the same Couchbase connection.
 
-```python
-# Create
-brewery = Brewery(name="My Brewery", city="Portland", country="United States")
-brewery.save()
+## Install
 
-# Get by primary key (fast KV lookup)
-brewery = Brewery.objects.get(pk="my_brewery_id")
-
-# Query with Django-style filtering
-us_breweries = Brewery.objects.filter(country="United States").order_by("name")[:20]
-ipa_beers = Beer.objects.filter(style__icontains="ipa", abv__gte=6.0)
-count = Beer.objects.filter(brewery_id="my_brewery").count()
-
-# Update
-brewery.city = "Seattle"
-brewery.save()
-
-# Delete
-brewery.delete()
+```bash
+pip install django-couchbase-orm
 ```
 
-## Fields
+Requires Python 3.10+, Django 4.2+, Couchbase SDK 4.1+.
 
-| Field | Python Type | Notes |
-|-------|-------------|-------|
-| `StringField` | `str` | `min_length`, `max_length`, `regex` |
-| `IntegerField` | `int` | `min_value`, `max_value` |
-| `FloatField` | `float` | `min_value`, `max_value` |
-| `BooleanField` | `bool` | |
-| `UUIDField` | `uuid.UUID` | `auto=True` to auto-generate |
-| `DateTimeField` | `datetime` | `auto_now`, `auto_now_add`; stored as ISO 8601 |
-| `DateField` | `date` | `auto_now`, `auto_now_add` |
-| `ListField` | `list` | Optional `field` arg for typed elements |
-| `DictField` | `dict` | Arbitrary JSON objects |
-| `EmbeddedDocumentField` | nested object | Structured sub-documents |
-| `ReferenceField` | `str` (key) | Cross-document references |
+## Django Backend Features
 
-All fields support: `required`, `default`, `choices`, `db_field`, `validators`.
+Everything you'd expect from a Django database backend:
 
-## QuerySet API
+- `manage.py migrate` creates Couchbase collections
+- `manage.py createsuperuser` works
+- `ForeignKey`, `ManyToManyField` with JOINs via N1QL
+- `select_related()`, `prefetch_related()`
+- `annotate()`, `aggregate()` with `Count`, `Sum`, `Avg`, `Min`, `Max`
+- `Q()` objects, `F()` expressions
+- All lookups: `exact`, `icontains`, `startswith`, `in`, `isnull`, `regex`, etc.
+- `values()`, `values_list()`, `distinct()`, `only()`, `defer()`
+- `bulk_create()`, `bulk_update()`
+- Django admin: list, add, edit, delete, search
+- Django auth: users, groups, permissions
+- Django sessions (DB backend)
+- ContentTypes framework
+- ModelForm, DRF ModelSerializer
+- Wagtail CMS (page tree, publishing, admin)
 
-```python
-# Filtering
-Brewery.objects.filter(country="United States")
-Brewery.objects.filter(name__icontains="brew")
-Brewery.objects.filter(name__startswith="21st")
-Beer.objects.filter(abv__gte=5.0, abv__lte=8.0)
-Beer.objects.filter(style__in=["IPA", "Pale Ale"])
-Beer.objects.filter(description__isnull=False)
-Beer.objects.filter(name__regex="^[A-Z].*IPA$")
+### Wagtail Support
 
-# Exclude
-Beer.objects.exclude(abv__lt=4.0)
-
-# Q objects for complex queries
-from django_couchbase_orm import Q
-Beer.objects.filter(Q(style="IPA") | Q(style="Pale Ale"))
-Beer.objects.filter(Q(abv__gte=7) & ~Q(name__contains="Light"))
-
-# Ordering
-Brewery.objects.order_by("name")       # ascending
-Brewery.objects.order_by("-abv")       # descending
-
-# Slicing (LIMIT/OFFSET)
-Brewery.objects.all()[:10]             # first 10
-Brewery.objects.all()[20:30]           # page 2
-
-# Aggregation
-Brewery.objects.filter(country="US").count()
-Beer.objects.filter(style="IPA").exists()
-
-# Single objects
-Beer.objects.first()
-Beer.objects.get(name="21A IPA", brewery_id="21st_amendment_brewery_cafe")
-
-# Values (return dicts instead of documents)
-Brewery.objects.values("name", "city")[:5]
-
-# Raw N1QL
-Beer.objects.raw("SELECT * FROM `bucket`.`scope`.`coll` WHERE type = $1", ["beer"])
-
-# Iterator (memory-efficient for large result sets)
-for beer in Beer.objects.filter(abv__gte=10).iterator():
-    print(beer.name)
-```
-
-### Lookup Reference
-
-| Lookup | N1QL | Example |
-|--------|------|---------|
-| `exact` (default) | `= $1` | `name="Alice"` |
-| `ne` | `!= $1` | `status__ne="deleted"` |
-| `gt` / `gte` | `> $1` / `>= $1` | `age__gte=18` |
-| `lt` / `lte` | `< $1` / `<= $1` | `age__lt=65` |
-| `in` | `IN $1` | `status__in=["active", "pending"]` |
-| `contains` | `CONTAINS()` | `name__contains="brew"` |
-| `icontains` | `CONTAINS(LOWER())` | `name__icontains="IPA"` |
-| `startswith` / `istartswith` | `LIKE 'x%'` | `name__startswith="21st"` |
-| `endswith` / `iendswith` | `LIKE '%x'` | `name__endswith="IPA"` |
-| `iexact` | `LOWER() = LOWER()` | `name__iexact="alice"` |
-| `isnull` | `IS NULL` / `IS NOT NULL` | `email__isnull=True` |
-| `regex` / `iregex` | `REGEXP_CONTAINS()` | `name__regex="^[A-Z]"` |
-| `between` | `BETWEEN $1 AND $2` | `abv__between=[5, 8]` |
-
-## Relations (ReferenceField)
-
-Use `ReferenceField` to create cross-document references — similar to a ForeignKey in Django's ORM.
+Wagtail works with the Couchbase backend:
 
 ```python
-from django_couchbase_orm import Document, StringField, ReferenceField
-
-class Brewery(Document):
-    name = StringField(required=True)
-
-class Beer(Document):
-    name = StringField(required=True)
-    brewery = ReferenceField(Brewery)      # by class
-    # or: brewery = ReferenceField("Brewery")  # by string name (for circular refs)
-```
-
-### Saving references
-
-```python
-# Save by key string
-beer = Beer(name="IPA", brewery="brewery::my_brewery")
-beer.save()
-
-# Or save by document instance
-brewery = Brewery.objects.get(pk="brewery::my_brewery")
-beer = Beer(name="IPA", brewery=brewery)  # stores brewery.pk automatically
-beer.save()
-```
-
-### Loading referenced documents
-
-```python
-beer = Beer.objects.get(pk="beer::my_ipa")
-
-# The field stores the key string
-print(beer.brewery)  # "brewery::my_brewery"
-
-# Load the referenced document manually
-brewery = Brewery.objects.get(pk=beer.brewery)
-
-# Or use dereference()
-field = Beer._meta.fields["brewery"]
-brewery = field.dereference(beer.brewery)
-```
-
-### Prefetching with select_related (avoids N+1 queries)
-
-```python
-# Without select_related: 1 query + N queries for each brewery
-beers = Beer.objects.filter(abv__gte=7)
-for beer in beers:
-    brewery = Brewery.objects.get(pk=beer.brewery)  # extra query each time!
-
-# With select_related: 1 query + 1 batch fetch for all breweries
-beers = Beer.objects.select_related("brewery").filter(abv__gte=7)
-for beer in beers:
-    brewery = beer._prefetched["brewery"]  # already loaded, no extra query
-```
-
-### Many-to-many (list of references)
-
-Couchbase has no join tables. Use a list of keys instead:
-
-```python
-class Playlist(Document):
-    name = StringField(required=True)
-    song_ids = ListField(field=StringField())  # ["song::1", "song::2", ...]
-
-# Add a song
-playlist.song_ids.append("song::new")
-playlist.save()
-```
-
-### Cascade delete
-
-Not automatic — handle it in signals:
-
-```python
-from django_couchbase_orm.signals import pre_delete
-
-def delete_brewery_beers(sender, instance, **kwargs):
-    """Delete all beers when a brewery is deleted."""
-    Beer.objects.filter(brewery=instance.pk).delete()
-
-pre_delete.connect(delete_brewery_beers, sender=Brewery)
-```
-
-## Embedded Documents
-
-```python
-from django_couchbase_orm import EmbeddedDocument, EmbeddedDocumentField, StringField
-
-class Address(EmbeddedDocument):
-    street = StringField()
-    city = StringField(required=True)
-    state = StringField()
-    zip_code = StringField(db_field="zipCode")
-
-class Company(Document):
-    name = StringField(required=True)
-    address = EmbeddedDocumentField(Address)
-
-company = Company(
-    name="Acme",
-    address=Address(city="Portland", state="OR", zip_code="97201"),
-)
-company.save()
-```
-
-## Sub-Document Operations
-
-Partial reads and writes without fetching the full document:
-
-```python
-brewery = Brewery.objects.get(pk="my_brewery")
-
-# Read a nested field
-city = brewery.subdoc.get("address.city")
-
-# Write a nested field
-brewery.subdoc.upsert("address.city", "Seattle")
-
-# Array operations
-brewery.subdoc.array_append("tags", "craft")
-brewery.subdoc.array_addunique("tags", "organic")
-
-# Counters
-brewery.subdoc.increment("visit_count", 1)
-
-# Multiple operations in one call
-import couchbase.subdocument as SD
-brewery.subdoc.multi_mutate(
-    SD.upsert("name", "New Name"),
-    SD.increment("version", 1),
-)
-```
-
-## Signals
-
-```python
-from django_couchbase_orm.signals import pre_save, post_save, pre_delete, post_delete
-
-def on_brewery_save(sender, instance, created, **kwargs):
-    if created:
-        print(f"New brewery: {instance.name}")
-
-post_save.connect(on_brewery_save, sender=Brewery)
-```
-
-## Couchbase Session Backend
-
-Store Django sessions in Couchbase with automatic TTL expiry:
-
-```python
-# settings.py
-SESSION_ENGINE = "django_couchbase_orm.contrib.sessions.backend"
-
-# Optional: customize session storage location
-COUCHBASE_SESSION = {
-    "ALIAS": "default",       # which COUCHBASE connection to use
-    "COLLECTION": "_default", # collection name
-}
-```
-
-## Couchbase Auth Backend
-
-Authenticate users against Couchbase-stored User documents:
-
-```python
-# settings.py
-AUTHENTICATION_BACKENDS = [
-    "django_couchbase_orm.contrib.auth.backend.CouchbaseAuthBackend",
+INSTALLED_APPS = [
+    ...
+    "wagtail", "wagtail.admin", "wagtail.images",
+    "wagtail.documents", "wagtail.search",
 ]
+
+# manage.py migrate - creates all Wagtail collections
+# manage.py createsuperuser - create admin user
+# Page tree, publishing, editing, images, documents all work
 ```
+
+## Document API Features
+
+For when you need Couchbase-native performance:
+
+- KV-optimized `get(pk=...)` (~1ms vs ~50ms for N1QL)
+- Sub-document operations (partial reads/writes)
+- Embedded documents
+- Django-style QuerySet with N1QL
+- Signals: `pre_save`, `post_save`, `pre_delete`, `post_delete`
+- Async support (`asave`, `adelete`, `alist`, `acount`)
+- Custom migrations framework (`cb_makemigrations`, `cb_migrate`)
+
+### Quick Example
 
 ```python
-from django_couchbase_orm.contrib.auth.models import User
+from django_couchbase_orm import Document, StringField, FloatField, Q
 
-# Create users
-user = User.create_user("alice", "alice@example.com", "secret123")
-admin = User.create_superuser("admin", "admin@example.com", "admin123")
+# CRUD
+beer = Beer(name="IPA", abv=6.5, style="IPA")
+beer.save()
+beer = Beer.objects.get(pk="beer-id")   # fast KV lookup
+beer.abv = 7.0
+beer.save()
+beer.delete()
 
-# Authenticate
-user = backend.authenticate(request, username="alice", password="secret123")
+# Queries
+Beer.objects.filter(style="IPA", abv__gte=6.0).order_by("-abv")[:20]
+Beer.objects.filter(Q(style="IPA") | Q(style="Pale Ale")).count()
+Beer.objects.aggregate(avg_abv=Avg("abv"), total=Count("*"))
 
-# Password management
-user.set_password("new_password")
-user.check_password("new_password")  # True
+# Sub-document operations
+beer.subdoc.upsert("ratings.average", 4.5)
+beer.subdoc.increment("view_count", 1)
+beer.subdoc.array_append("tags", "hoppy")
 ```
 
-## Document Meta Options
+## Configuration
+
+### Database Backend (recommended)
 
 ```python
-class MyDocument(Document):
-    class Meta:
-        collection_name = "my_collection"  # Couchbase collection (default: class name lowercase)
-        scope_name = "_default"            # Couchbase scope
-        bucket_alias = "default"           # Key in COUCHBASE settings
-        doc_type_field = "_type"           # Type discriminator field name
-        abstract = True                    # Don't register, for inheritance only
+DATABASES = {
+    "default": {
+        "ENGINE": "django_couchbase_orm.db.backends.couchbase",
+        "NAME": "mybucket",          # Couchbase bucket
+        "USER": "Administrator",
+        "PASSWORD": "password",
+        "HOST": "couchbase://localhost",
+        "OPTIONS": {
+            "SCOPE": "_default",     # optional
+        },
+    }
+}
+DEFAULT_AUTO_FIELD = "django_couchbase_orm.db.backends.couchbase.fields.CouchbaseAutoField"
 ```
 
-## Multiple Couchbase Connections
+### Document API
 
 ```python
 COUCHBASE = {
     "default": {
-        "CONNECTION_STRING": "couchbases://cluster1.example.com",
-        "USERNAME": "user1",
-        "PASSWORD": "pass1",
-        "BUCKET": "app_data",
-    },
-    "analytics": {
-        "CONNECTION_STRING": "couchbases://cluster2.example.com",
-        "USERNAME": "user2",
-        "PASSWORD": "pass2",
-        "BUCKET": "analytics",
-    },
+        "CONNECTION_STRING": "couchbase://localhost",
+        "USERNAME": "Administrator",
+        "PASSWORD": "password",
+        "BUCKET": "mybucket",
+        "SCOPE": "_default",
+    }
 }
-
-class Event(Document):
-    class Meta:
-        bucket_alias = "analytics"
 ```
 
-## Going Fully Couchbase (No Relational DB)
+If you use the database backend, the Document API auto-derives its config from `DATABASES` - no need to set both.
 
-If you don't use Django admin or permissions, you can drop the relational database entirely:
+## Fields (Document API)
 
-```python
-INSTALLED_APPS = [
-    "django_couchbase_orm",
-    "django.contrib.messages",
-    "django.contrib.staticfiles",
-    # your apps
-]
+| Field | Type | Options |
+|-------|------|---------|
+| `StringField` | `str` | `min_length`, `max_length`, `regex` |
+| `IntegerField` | `int` | `min_value`, `max_value` |
+| `FloatField` | `float` | `min_value`, `max_value` |
+| `BooleanField` | `bool` | |
+| `UUIDField` | `uuid.UUID` | `auto=True` |
+| `DateTimeField` | `datetime` | `auto_now`, `auto_now_add` |
+| `DateField` | `date` | `auto_now`, `auto_now_add` |
+| `ListField` | `list` | `field` for typed elements |
+| `DictField` | `dict` | |
+| `EmbeddedDocumentField` | nested | |
+| `ReferenceField` | FK-like | |
 
-SESSION_ENGINE = "django_couchbase_orm.contrib.sessions.backend"
-AUTHENTICATION_BACKENDS = [
-    "django_couchbase_orm.contrib.auth.backend.CouchbaseAuthBackend",
-]
+## Known Limitations
 
-# No DATABASES setting needed
-```
+- **Transactions**: Couchbase ACID transactions require multi-node clusters. `atomic()` runs as a no-op on single-node setups.
+- **Window functions**: N1QL doesn't support `OVER()` clauses.
+- **Correlated subqueries with GROUP BY**: Some complex query patterns return empty results gracefully instead of crashing.
+- **Multi-table inheritance**: Works but may have performance implications with N1QL JOINs.
 
-## Aggregation
+## Tests
 
-```python
-from django_couchbase_orm import Avg, Count, Max, Min, Sum
-
-Beer.objects.filter(style="IPA").aggregate(
-    avg_abv=Avg("abv"),
-    max_abv=Max("abv"),
-    total=Count("*"),
-)
-# Returns: {"avg_abv": 6.5, "max_abv": 12.0, "total": 150}
-```
-
-## Pagination
-
-```python
-from django_couchbase_orm import CouchbasePaginator
-
-paginator = CouchbasePaginator(Beer.objects.filter(abv__gte=5), per_page=20)
-page = paginator.page(1)
-
-for beer in page:
-    print(beer.name)
-
-page.has_next        # True
-page.has_previous    # False
-page.next_page_number  # 2
-paginator.num_pages  # 15
-paginator.count      # 300
-```
-
-## Bulk Operations
-
-```python
-# Create many documents at once
-beers = [Beer(name=f"Beer {i}", abv=5.0 + i * 0.1) for i in range(100)]
-Beer.objects.bulk_create(beers)
-
-# Update specific fields on many documents
-for beer in beers:
-    beer._data["abv"] = 7.0
-Beer.objects.bulk_update(beers, ["abv"])
-```
-
-## select_related (Prefetching)
-
-```python
-# Avoid N+1 queries when accessing ReferenceFields
-beers = Beer.objects.select_related("brewery").filter(abv__gte=7)
-for beer in beers:
-    # brewery is already prefetched — no extra query
-    print(beer._prefetched["brewery"].name)
-```
-
-## Migrations
-
-Django-style migrations for Couchbase — track schema changes, create indexes, transform data, and roll back safely.
-
-### Quick start
+940+ tests covering the database backend and Document API:
 
 ```bash
-# Auto-detect Document changes and generate a migration file
-python manage.py cb_makemigrations
+# Document API tests (784 tests)
+pytest tests/
 
-# Apply all pending migrations
-python manage.py cb_migrate
-
-# Show migration status
-python manage.py cb_migrate --list
-
-# Revert to a specific migration
-python manage.py cb_migrate myapp 0001_initial
+# Backend integration tests (156 tests, requires Couchbase)
+DJANGO_SETTINGS_MODULE=tests.test_backend_settings pytest tests/test_backend_*.py
 ```
-
-### Writing migrations
-
-Migration files live in `<your_app>/cb_migrations/` and look like Django migrations:
-
-```python
-from django_couchbase_orm.migrations import Migration as BaseMigration
-from django_couchbase_orm.migrations.operations import (
-    CreateCollection, CreateIndex, AddField, RenameField, RunPython,
-)
-
-class Migration(BaseMigration):
-    app_label = 'myapp'
-    name = '0001_initial'
-    dependencies = []
-
-    operations = [
-        CreateCollection('beers', scope_name='brewing'),
-        CreateIndex(
-            index_name='idx_beer_name',
-            fields=['name'],
-            collection_name='beers',
-            scope_name='brewing',
-        ),
-        AddField(
-            document_type='beer',
-            field_name='rating',
-            default=0,
-            collection_name='beers',
-            scope_name='brewing',
-        ),
-    ]
-```
-
-### Available operations
-
-| Operation | Reversible | Description |
-|-----------|:----------:|-------------|
-| `CreateScope` | Yes | Create a Couchbase scope |
-| `DropScope` | No | Drop a scope (data loss) |
-| `CreateCollection` | Yes | Create a collection in a scope |
-| `DropCollection` | No | Drop a collection (data loss) |
-| `CreateIndex` | Yes | Create a secondary N1QL index |
-| `DropIndex` | No | Drop an index |
-| `AddField` | Yes | Add a field with default to all documents of a type |
-| `RemoveField` | No | Remove a field from all documents of a type |
-| `RenameField` | Yes | Rename a field in all documents of a type |
-| `AlterField` | No | Transform field values using a N1QL expression |
-| `RunN1QL` | Optional | Execute arbitrary N1QL (reversible if `reverse_statement` provided) |
-| `RunPython` | Optional | Execute a Python callable (reversible if `reverse_func` provided) |
-
-### Auto-detection
-
-`cb_makemigrations` automatically detects:
-- New/removed Document classes (creates/drops collections)
-- Added/removed fields (N1QL UPDATE to backfill defaults or UNSET)
-- New/removed/changed indexes
-- Custom scope assignments
-
-### Dependency resolution
-
-Migrations can declare dependencies on other migrations, even across apps:
-
-```python
-class Migration(BaseMigration):
-    dependencies = [
-        ('auth', '0001_initial'),    # cross-app dependency
-        ('myapp', '0002_add_field'), # same-app dependency
-    ]
-```
-
-The executor resolves dependencies using topological sort and detects circular dependencies.
-
-### Fake migrations
-
-Mark migrations as applied without executing (useful for existing databases):
-
-```bash
-python manage.py cb_migrate --fake
-```
-
-### Migration state
-
-Applied migrations are tracked in a Couchbase document (`_cb_migrations`) in the default bucket. No relational database needed.
-
-## Management Commands
-
-```bash
-# Auto-detect changes and generate migration files
-python manage.py cb_makemigrations
-python manage.py cb_makemigrations --dry-run    # preview without writing
-python manage.py cb_makemigrations --empty      # create empty migration for manual editing
-python manage.py cb_makemigrations --initial    # ignore previous state
-
-# Apply or revert migrations
-python manage.py cb_migrate
-python manage.py cb_migrate --list              # show all migrations and status
-python manage.py cb_migrate --fake              # mark as applied without executing
-python manage.py cb_migrate myapp 0001_initial  # migrate to specific target
-
-# Create N1QL indexes declared in Document Meta.indexes
-python manage.py cb_ensure_indexes
-python manage.py cb_ensure_indexes --primary    # also create primary indexes
-python manage.py cb_ensure_indexes --dry-run    # preview without executing
-
-# Create scopes and collections for all Document classes
-python manage.py cb_create_collections
-python manage.py cb_create_collections --dry-run
-```
-
-## Async Support
-
-Run queries concurrently for faster page loads. Requires ASGI (uvicorn).
-
-```python
-import asyncio
-from django_couchbase_orm import Document, StringField, FloatField
-
-# Async Document CRUD
-brewery = Brewery(name="My Brewery", city="Portland")
-await brewery.asave()
-await brewery.areload()
-await brewery.adelete()
-
-# Async QuerySet methods
-count = await Brewery.objects.acount()
-first = await Brewery.objects.afirst()
-beer = await Beer.objects.aget(pk="beer-id")
-exists = await Beer.objects.filter(abv__gte=10).aexists()
-beers = await Beer.objects.filter(style="IPA").alist()
-
-# Async Manager
-beer = await Beer.objects.aget(pk="beer-id")
-new_beer = await Beer.objects.acreate(name="New IPA", abv=7.5)
-
-# Async iteration
-async for beer in Beer.objects.filter(abv__gte=7):
-    print(beer.name)
-
-# Concurrent queries (the big performance win)
-async def beer_list_view(request):
-    count, beers, styles = await asyncio.gather(
-        qs.acount(),                    # query 1
-        qs[:20].alist(),                # query 2
-        Beer.objects.values("style").alist(),  # query 3
-    )
-    # All 3 run concurrently — 3x faster than sequential
-```
-
-**ASGI setup:**
-```bash
-pip install uvicorn
-uvicorn myproject.asgi:application --host 0.0.0.0 --port 8000
-```
-
-## Performance
-
-Built-in optimizations for production deployments:
-
-- **Connection pre-warming**: Couchbase connections are established in a background thread on app startup, eliminating the 10-15s cold start on the first request
-- **Prepared statements**: All N1QL queries use `adhoc=False`, telling Couchbase to cache the query plan for ~30-50% faster repeated queries
-- **Async + gather**: Async views can run multiple queries concurrently, making multi-query pages 2-3x faster
-- **KV fast path**: `get(pk=...)` bypasses N1QL entirely and uses Couchbase KV operations (~1ms vs ~50ms)
-
-To disable connection pre-warming:
-```python
-COUCHBASE_PREWARM = False
-```
-
-## Security
-
-The library is designed with security as a priority:
-
-| Protection | Details |
-|-----------|---------|
-| **N1QL injection** | All queries use parameterized values (`$1, $2, ...`) — never string interpolation |
-| **Identifier injection** | All field names validated against `^[a-zA-Z_]\w*$` before embedding in queries |
-| **Password storage** | Uses Django's `make_password`/`check_password` (PBKDF2/Argon2) |
-| **Timing attack prevention** | Auth backend runs password hasher on every code path (constant-time) |
-| **Session fixation** | Session key is cycled on login via `request.session.cycle_key()` |
-| **Document ID injection** | User-supplied IDs are namespace-prefixed and validated against a character whitelist |
-| **CSRF** | All mutation forms include `{% csrf_token %}`, Django middleware enforces it |
-| **XSS** | Django template auto-escaping on all output; URL fields validated for `http(s)://` scheme |
-| **Credential safety** | All secrets via environment variables; defaults fail in production if not set |
-| **Session key redaction** | Session keys never appear in log output |
-| **Login rate limiting** | 5 failed attempts triggers a 5-minute lockout (example app) |
-
-## Test Coverage
-
-**784 tests** across 28 test modules, tested on Python 3.10, 3.11, 3.12, and 3.13.
-
-| Module | Coverage |
-|--------|----------|
-| Fields (base, simple, datetime, compound, reference) | 93-100% |
-| Exceptions, signals, utils, paginator | 100% |
-| Auth backend | 100% |
-| Transform lookups | 99% |
-| Options | 98% |
-| Document (sync + async) | 95% |
-| Q objects | 95% |
-| N1QL query builder | 92% |
-| Manager (sync + async) | 92% |
-| Async connection | 89% |
-| QuerySet (sync + async) | 89% |
-| Session backend | 74% |
-| Management commands | 63-76% |
-
-| Migrations (state, operations, executor, autodetector, writer, commands) | 95%+ |
-
-**Overall: 91%+ unit test coverage, 784 tests, 0 known vulnerabilities (pip-audit clean).**
 
 ## Development
 
@@ -735,18 +226,6 @@ cd django-couchbase-orm
 python -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"
 pytest
-```
-
-### Running lint
-```bash
-ruff check src/
-ruff format --check src/
-```
-
-### Running coverage
-```bash
-coverage run -m pytest tests/
-coverage report --show-missing --include="src/*"
 ```
 
 ## License
