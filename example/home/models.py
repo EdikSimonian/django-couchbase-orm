@@ -17,8 +17,8 @@ class HomePage(Page):
 class BlogPage(Page):
     """A blog post page."""
 
-    date = models.DateField("Post date")
-    intro = models.CharField(max_length=250)
+    date = models.DateField("Post date", null=True, blank=True)
+    intro = models.CharField(max_length=250, blank=True, default="")
     body = RichTextField(blank=True)
 
     content_panels = Page.content_panels + [
