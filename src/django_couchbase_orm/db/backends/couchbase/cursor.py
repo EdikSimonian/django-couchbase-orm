@@ -212,6 +212,99 @@ def _fix_positional_group_by(sql: str, columns: list[str] | None) -> str:
     return sql[: m.start(1)] + new_group + sql[m.end(1) :]
 
 
+def _fix_in_subquery(sql: str) -> str:
+    """Add RAW keyword to subqueries inside IN clauses.
+
+    N1QL's IN operator expects scalar values, but Django generates
+    `IN (SELECT col AS alias FROM ...)` which returns objects.
+    We need `IN (SELECT RAW col FROM ...)` to return scalars.
+
+    Only modifies single-column subqueries inside IN(...).
+    """
+    # Find IN (SELECT ... FROM ...) patterns.
+    # We need to handle nested parens carefully.
+    result = []
+    i = 0
+    sql_upper = sql.upper()
+    while i < len(sql):
+        # Look for "IN ("
+        in_pos = sql_upper.find("IN (SELECT ", i)
+        if in_pos == -1:
+            in_pos = sql_upper.find("IN(SELECT ", i)
+        if in_pos == -1:
+            result.append(sql[i:])
+            break
+
+        # Check it's actually "IN" (not part of "INNER JOIN" etc.)
+        # Look for word boundary before IN
+        if in_pos > 0 and sql[in_pos - 1].isalpha():
+            result.append(sql[i : in_pos + 2])
+            i = in_pos + 2
+            continue
+
+        # Find the opening paren after IN
+        paren_start = sql.index("(", in_pos + 2)
+        result.append(sql[i : paren_start + 1])
+        i = paren_start + 1
+
+        # Find the matching closing paren
+        depth = 1
+        j = i
+        while j < len(sql) and depth > 0:
+            if sql[j] == "(":
+                depth += 1
+            elif sql[j] == ")":
+                depth -= 1
+            j += 1
+        subquery = sql[i : j - 1]  # Content inside the parens
+
+        # Check if it's a SELECT with a single column and has AS alias.
+        # Replace "SELECT expr AS alias" with "SELECT RAW expr"
+        sub_stripped = subquery.strip()
+        if sub_stripped.upper().startswith("SELECT "):
+            # Find FROM in the subquery (at the top level only)
+            from_match = re.search(r"\bFROM\b", sub_stripped, re.IGNORECASE)
+            if from_match:
+                select_part = sub_stripped[7 : from_match.start()].strip()
+                rest = sub_stripped[from_match.start() :]
+                # Check if it's a single column (no commas at top level)
+                comma_depth = 0
+                has_top_comma = False
+                for ch in select_part:
+                    if ch == "(":
+                        comma_depth += 1
+                    elif ch == ")":
+                        comma_depth -= 1
+                    elif ch == "," and comma_depth == 0:
+                        has_top_comma = True
+                        break
+                if not has_top_comma:
+                    # Single column — strip AS alias and add RAW
+                    as_match = re.search(
+                        r"\s+AS\s+[`\"]?\w+[`\"]?\s*$",
+                        select_part,
+                        re.IGNORECASE,
+                    )
+                    if as_match:
+                        select_part = select_part[: as_match.start()].strip()
+                    # Check if DISTINCT is present
+                    if select_part.upper().startswith("DISTINCT "):
+                        select_part = "DISTINCT " + select_part[9:]
+                        result.append(f"SELECT RAW {select_part} {rest}")
+                    else:
+                        result.append(f"SELECT RAW {select_part} {rest}")
+                    result.append(")")
+                    i = j
+                    continue
+
+        # No modification needed — keep the subquery as-is
+        result.append(subquery)
+        result.append(")")
+        i = j
+
+    return "".join(result)
+
+
 class CouchbaseCursor:
     """Wraps Couchbase SDK query execution with a DB-API 2.0 interface.
 
@@ -346,6 +439,9 @@ class CouchbaseCursor:
         # positional references like ORDER BY 1 or GROUP BY 1, 2, 3.
         sql_stripped = _fix_positional_order_by(sql_stripped, expected_columns)
         sql_stripped = _fix_positional_group_by(sql_stripped, expected_columns)
+
+        # Fix IN (SELECT ...) subqueries — N1QL needs SELECT RAW for scalars.
+        sql_stripped = _fix_in_subquery(sql_stripped)
 
         n1ql, positional_params = self._convert_params(sql_stripped, params)
 
