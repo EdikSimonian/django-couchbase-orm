@@ -6,6 +6,8 @@
 
 Use Couchbase as your Django database. Drop-in backend for `django.db.models.Model` plus a standalone Document API for Couchbase-native patterns.
 
+**Docs:** [Database Backend](docs/database-backend.md) | [Document API](docs/document-api.md) | [Wagtail](docs/wagtail.md) | [Hybrid Architecture](docs/hybrid.md)
+
 ## Two Ways to Use It
 
 ### 1. Django Database Backend
