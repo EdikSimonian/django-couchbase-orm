@@ -22,7 +22,6 @@ class DatabaseClient(BaseDatabaseClient):
         env = None
         if password:
             env = {"CB_PASSWORD": password}
-            args.extend(["-p", password])
 
         args.extend(parameters)
         return args, env

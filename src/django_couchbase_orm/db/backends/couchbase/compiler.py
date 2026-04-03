@@ -138,7 +138,8 @@ class SQLInsertCompiler(CouchbaseCompilerMixin, base_compiler.SQLInsertCompiler)
 
             bucket = self.connection.settings_dict["NAME"]
             scope = self.connection.settings_dict.get("OPTIONS", {}).get("SCOPE", "_default")
-            keyspace = f"`{bucket}`.`{scope}`.`{opts.db_table}`"
+            qn = self.connection.ops.quote_name
+            keyspace = f"{qn(bucket)}.{qn(scope)}.{qn(opts.db_table)}"
             where = " AND ".join(conditions)
             sql = f"SELECT `id` FROM {keyspace} WHERE {where} LIMIT 1"
 
@@ -154,8 +155,12 @@ class SQLInsertCompiler(CouchbaseCompilerMixin, base_compiler.SQLInsertCompiler)
                     existing_id = row.get("id")
                     if existing_id is not None:
                         return existing_id
-            except Exception:
-                pass
+            except Exception as e:
+                err_str = str(e)
+                if "KeyspaceNotFoundException" in type(e).__name__ or "12003" in err_str:
+                    pass
+                else:
+                    raise
 
         return None
 

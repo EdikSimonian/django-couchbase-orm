@@ -305,124 +305,6 @@ def _deduplicate_select_columns(sql: str) -> str:
     """Add unique aliases to duplicate column names in a SELECT statement.
 
     N1QL doesn't allow two result columns with the same name.
-    Handles subqueries in the SELECT list by tracking parenthesis depth.
-    """
-    # Find the top-level FROM (not inside subqueries) by tracking parens.
-    sql_stripped = sql.strip()
-    upper = sql_stripped.upper()
-    if not upper.startswith("SELECT"):
-        return sql
-
-    # Find "SELECT [DISTINCT] " prefix.
-    prefix_match = re.match(r"(SELECT\s+(?:DISTINCT\s+)?)", sql_stripped, re.IGNORECASE)
-    if not prefix_match:
-        return sql
-    prefix = prefix_match.group(1)
-    after_select = sql_stripped[prefix_match.end() :]
-
-    # Find the top-level FROM by tracking paren depth.
-    depth = 0
-    from_pos = -1
-    i = 0
-    while i < len(after_select):
-        ch = after_select[i]
-        if ch == "(":
-            depth += 1
-        elif ch == ")":
-            depth -= 1
-        elif depth == 0 and after_select[i : i + 5].upper() == "FROM ":
-            from_pos = i
-            break
-        i += 1
-
-    if from_pos == -1:
-        return sql
-
-    select_part = after_select[:from_pos].strip()
-    from_and_rest = after_select[from_pos:]
-
-    # Split columns respecting parentheses (for subqueries).
-    columns = []
-    depth = 0
-    current = []
-    for ch in select_part:
-        if ch == "(":
-            depth += 1
-            current.append(ch)
-        elif ch == ")":
-            depth -= 1
-            current.append(ch)
-        elif ch == "," and depth == 0:
-            columns.append("".join(current).strip())
-            current = []
-        else:
-            current.append(ch)
-    if current:
-        columns.append("".join(current).strip())
-
-    if len(columns) <= 1:
-        return sql
-
-    def get_result_name(col_expr):
-        # If it's a subquery (...) AS alias, get the alias.
-        as_match = re.search(r"\bAS\s+`?(\w+)`?\s*$", col_expr, re.IGNORECASE)
-        if as_match:
-            return as_match.group(1)
-        # If it starts with ( it's a subquery without alias — skip.
-        if col_expr.strip().startswith("("):
-            return None
-        backtick = re.search(r"`(\w+)`\s*$", col_expr)
-        if backtick:
-            return backtick.group(1)
-        dot = re.search(r"\.(\w+)\s*$", col_expr)
-        if dot:
-            return dot.group(1)
-        return col_expr.strip()
-
-    names = [get_result_name(c) for c in columns]
-
-    # Check for duplicates (ignoring None).
-    seen = {}
-    has_dups = False
-    for name in names:
-        if name is None:
-            continue
-        if name in seen:
-            has_dups = True
-            break
-        seen[name] = True
-
-    if not has_dups:
-        return sql
-
-    # Add unique aliases to duplicates.
-    seen = {}
-    new_columns = []
-    for col_expr, name in zip(columns, names):
-        if name is not None and name in seen:
-            seen[name] += 1
-            alias = f"{name}__{seen[name]}"
-            if re.search(r"\bAS\s+`?\w+`?\s*$", col_expr, re.IGNORECASE):
-                col_expr = re.sub(
-                    r"\bAS\s+`?\w+`?\s*$",
-                    f"AS `{alias}`",
-                    col_expr,
-                    flags=re.IGNORECASE,
-                )
-            else:
-                col_expr = f"{col_expr} AS `{alias}`"
-        else:
-            if name is not None:
-                seen[name] = 1
-        new_columns.append(col_expr)
-
-    return prefix + ", ".join(new_columns) + " " + from_and_rest
-
-
-def _deduplicate_select_columns(sql: str) -> str:
-    """Add unique aliases to duplicate column names in a SELECT statement.
-
-    N1QL doesn't allow two result columns with the same name.
     Uses _find_top_level_from for subquery-aware parsing.
     """
     sql_stripped = sql.strip()
@@ -647,10 +529,11 @@ class CouchbaseCursor:
     parameters and executes queries via cluster.query().
     """
 
-    def __init__(self, cluster, bucket_name, scope_name="_default"):
+    def __init__(self, cluster, bucket_name, scope_name="_default", scan_consistency="request_plus"):
         self._cluster = cluster
         self._bucket_name = bucket_name
         self._scope_name = scope_name
+        self._scan_consistency = scan_consistency
         self._results = None
         self._rows: list[tuple] = []
         self._row_index = 0
@@ -852,7 +735,7 @@ class CouchbaseCursor:
 
         opts = QueryOptions(
             positional_parameters=positional_params if positional_params else None,
-            scan_consistency="request_plus",
+            scan_consistency=self._scan_consistency,
             metrics=True,
         )
 
@@ -879,7 +762,10 @@ class CouchbaseCursor:
             # 3000 = syntax error (often from unsupported SQL patterns)
             # 4210 = correlated subquery in GROUP BY (unsupported pattern)
             # Return empty result instead of crashing.
-            if err_code in ("3000", "4210"):
+            if err_code in ("3000", "4210") and (
+                n1ql.strip().upper().startswith("SELECT")
+                or "None(" in n1ql  # PostgreSQL-specific function in data migration
+            ):
                 import logging
 
                 logging.getLogger("django.db.backends.couchbase").warning(

@@ -36,28 +36,28 @@ def _patch_autofields():
 
         def _make_patched(original_cls):
             def get_prep_value(self, value):
-                if value is None:
+                if value is None or value == "":
                     return None
                 try:
                     return int(value)
                 except (TypeError, ValueError):
-                    return value
+                    raise ValueError(f"Field expected a number but got {value!r}.")
 
             def get_db_prep_value(self, value, connection, prepared=False):
-                if value is None:
+                if value is None or value == "":
                     return None
                 try:
                     return int(value)
                 except (TypeError, ValueError):
-                    return value
+                    raise ValueError(f"Field expected a number but got {value!r}.")
 
             def to_python(self, value):
-                if value is None:
-                    return value
+                if value is None or value == "":
+                    return None
                 try:
                     return int(value)
                 except (TypeError, ValueError):
-                    return value
+                    raise ValueError(f"Field expected a number but got {value!r}.")
 
             original_cls.get_prep_value = get_prep_value
             original_cls.get_db_prep_value = get_db_prep_value
@@ -195,7 +195,7 @@ class DatabaseWrapper(BaseDatabaseWrapper):
         return {
             "connection_string": settings.get("HOST", "couchbase://localhost"),
             "username": settings.get("USER", "Administrator"),
-            "password": settings.get("PASSWORD", "password"),
+            "password": settings.get("PASSWORD", ""),
             "bucket": settings.get("NAME", "default"),
             "scope": settings.get("OPTIONS", {}).get("SCOPE", "_default"),
         }
@@ -235,10 +235,12 @@ class DatabaseWrapper(BaseDatabaseWrapper):
 
     def create_cursor(self, name=None):
         params = self.get_connection_params()
+        scan_consistency = self.settings_dict.get("OPTIONS", {}).get("SCAN_CONSISTENCY", "request_plus")
         return CouchbaseCursor(
             self.connection,
             params["bucket"],
             params["scope"],
+            scan_consistency=scan_consistency,
         )
 
     def init_connection_state(self):

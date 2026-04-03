@@ -22,6 +22,7 @@ class DatabaseOperations(BaseDatabaseOperations):
     def quote_name(self, name):
         if name.startswith("`") and name.endswith("`"):
             return name
+        name = name.replace("`", "``")
         return f"`{name}`"
 
     def no_limit_value(self):

@@ -5,6 +5,7 @@ from __future__ import annotations
 import threading
 
 from django.db import models
+from django.db.utils import DatabaseError
 
 
 class CouchbaseAutoField(models.AutoField):
@@ -37,17 +38,21 @@ def get_next_id(cluster, bucket_name, scope_name, table_name):
     """
     from couchbase.options import IncrementOptions, SignedInt64
 
-    bucket = cluster.bucket(bucket_name)
-    counter_collection = bucket.scope(scope_name).collection("_default")
     counter_key = f"_counter:{table_name}"
 
+    def _get_collection():
+        bucket = cluster.bucket(bucket_name)
+        return bucket.scope(scope_name).collection("_default")
+
     try:
-        result = counter_collection.binary().increment(counter_key, IncrementOptions(initial=SignedInt64(1)))
+        coll = _get_collection()
+        result = coll.binary().increment(counter_key, IncrementOptions(initial=SignedInt64(1)))
         return result.content
     except Exception:
         with _counter_lock:
             try:
-                result = counter_collection.binary().increment(counter_key, IncrementOptions(initial=SignedInt64(1)))
+                coll = _get_collection()
+                result = coll.binary().increment(counter_key, IncrementOptions(initial=SignedInt64(1)))
                 return result.content
-            except Exception:
-                return 1
+            except Exception as exc:
+                raise DatabaseError(f"Failed to generate next ID for {table_name}: {exc}") from exc
