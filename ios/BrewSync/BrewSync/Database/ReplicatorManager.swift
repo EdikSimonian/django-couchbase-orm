@@ -53,8 +53,8 @@ class ReplicatorManager: ObservableObject {
         config.continuous = true
         config.addCollections(collections)
 
-        // Authenticate with the OIDC session token
-        config.authenticator = SessionAuthenticator(sessionID: idToken)
+        // Authenticate with OIDC bearer token
+        config.headers = ["Authorization": "Bearer \(idToken)"]
 
         replicator = Replicator(config: config)
 
@@ -82,11 +82,18 @@ class ReplicatorManager: ObservableObject {
                 }
 
                 if let error = change.status.error {
-                    print("[Replicator] Error: \(error.localizedDescription)")
+                    print("[Replicator] Error: \(error)")
+                    print("[Replicator] Error description: \(error.localizedDescription)")
+                    print("[Replicator] Activity: \(change.status.activity)")
+                    print("[Replicator] Progress: \(change.status.progress.completed)/\(change.status.progress.total)")
                     self?.status = .error
                 }
             }
         }
+
+        print("[Replicator] Starting with URL: \(appServicesURL)")
+        print("[Replicator] Collections: \(collections.map { $0.name })")
+        print("[Replicator] Token (first 20 chars): \(String(idToken.prefix(20)))...")
 
         replicator?.start()
         status = .connecting

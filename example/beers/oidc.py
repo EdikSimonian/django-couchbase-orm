@@ -10,7 +10,7 @@ def get_claims(request):
     """Return custom claims for the OIDC ID token / userinfo endpoint."""
     user = request.user
     claims = {
-        "sub": str(user.pk),
+        "sub": user.username,
         "preferred_username": user.username,
         "email": user.email,
         "groups": list(user.groups.values_list("name", flat=True)),
