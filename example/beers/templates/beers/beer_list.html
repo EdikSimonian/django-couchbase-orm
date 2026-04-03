@@ -1,0 +1,93 @@
+{% extends "beers/base.html" %}
+
+{% block title %}BrewSync — Craft Beer Catalog{% endblock %}
+
+{% block content %}
+<div class="toolbar">
+    <input type="text" class="search-box" id="search" placeholder="Search beers..." autocomplete="off">
+    <button class="filter-btn active" data-style="">All</button>
+    {% for style in styles %}
+    <button class="filter-btn" data-style="{{ style }}">{{ style }}</button>
+    {% endfor %}
+</div>
+<div class="count" id="count">{{ beers|length }} beers</div>
+<div class="grid" id="beer-grid">
+    {% for beer in beers %}
+    <a href="/beers/{{ beer.pk }}/" class="card" data-name="{{ beer.name|lower }}" data-style="{{ beer.style }}">
+        <div class="card-header">
+            <h3>{{ beer.name }}</h3>
+            {% if beer.abv %}<span class="badge badge-abv">{{ beer.abv }}%</span>{% endif %}
+        </div>
+        <div class="card-style">{{ beer.style }}</div>
+        <div class="card-brewery">{{ beer.brewery.name|default:"—" }}</div>
+        {% if beer.description %}<div class="card-desc">{{ beer.description }}</div>{% endif %}
+        <div class="card-footer">
+            <div class="stars">
+                {% if beer.avg_rating %}
+                {% with stars=beer.avg_rating|floatformat:0 %}
+                {% for i in "12345" %}{% if forloop.counter <= stars|add:0 %}★{% else %}☆{% endif %}{% endfor %}
+                {% endwith %}
+                <span class="rating-count">({{ beer.rating_count }})</span>
+                {% else %}
+                ☆☆☆☆☆
+                {% endif %}
+            </div>
+            {% if beer.ibu %}<span class="badge badge-ibu">{{ beer.ibu }} IBU</span>{% endif %}
+        </div>
+    </a>
+    {% empty %}
+    <div class="empty">No beers yet. <a href="/admin/beers/beer/add/">Add one</a> or run <code>python manage.py seed_beers</code></div>
+    {% endfor %}
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// Search filter
+const search = document.getElementById('search');
+const grid = document.getElementById('beer-grid');
+const cards = grid.querySelectorAll('.card');
+const countEl = document.getElementById('count');
+const filterBtns = document.querySelectorAll('.filter-btn');
+let activeStyle = '';
+
+function filterCards() {
+    const q = search.value.toLowerCase();
+    let visible = 0;
+    cards.forEach(card => {
+        const name = card.dataset.name;
+        const style = card.dataset.style;
+        const matchSearch = !q || name.includes(q);
+        const matchStyle = !activeStyle || style === activeStyle;
+        const show = matchSearch && matchStyle;
+        card.style.display = show ? '' : 'none';
+        if (show) visible++;
+    });
+    countEl.textContent = visible + ' beer' + (visible !== 1 ? 's' : '');
+}
+
+search.addEventListener('input', filterCards);
+filterBtns.forEach(btn => {
+    btn.addEventListener('click', () => {
+        filterBtns.forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        activeStyle = btn.dataset.style;
+        filterCards();
+    });
+});
+
+// Live polling for updates
+let lastCheck = new Date().toISOString();
+setInterval(async () => {
+    try {
+        const res = await fetch('/api/beers/?ordering=-updated_at');
+        if (res.ok) {
+            // Subtle indicator that sync is active
+            document.querySelector('.sync-dot').style.background = '#2ecc71';
+        }
+    } catch {
+        document.querySelector('.sync-dot').style.background = '#e74c3c';
+    }
+}, 3000);
+</script>
+{% endblock %}

@@ -1,0 +1,68 @@
+{% extends "beers/base.html" %}
+
+{% block title %}{{ beer.name }} — BrewSync{% endblock %}
+
+{% block extra_css %}
+<style>
+    .detail { padding: 32px 0; }
+    .back { color: var(--accent); text-decoration: none; font-size: 14px; display: inline-flex; align-items: center; gap: 4px; margin-bottom: 20px; }
+    .detail-header { display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 16px; margin-bottom: 24px; }
+    .detail h2 { font-size: 32px; color: #fff; }
+    .detail-badges { display: flex; gap: 8px; }
+    .badge-lg { padding: 6px 14px; border-radius: 16px; font-size: 15px; font-weight: 600; }
+    .detail-meta { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 24px; }
+    .meta-card { background: var(--card-bg); border-radius: 10px; padding: 16px; }
+    .meta-label { font-size: 12px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 4px; }
+    .meta-value { font-size: 20px; font-weight: 600; }
+    .detail-desc { font-size: 16px; line-height: 1.7; color: var(--text-muted); max-width: 700px; margin-bottom: 32px; }
+    .detail-rating { display: flex; align-items: center; gap: 12px; }
+    .detail-stars { font-size: 28px; color: var(--accent); }
+    .edit-link { color: var(--text-muted); font-size: 13px; text-decoration: none; border: 1px solid #333; padding: 6px 14px; border-radius: 6px; }
+    .edit-link:hover { border-color: var(--accent); color: var(--accent); }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="detail">
+    <a href="/beers/" class="back">← Back to all beers</a>
+    <div class="detail-header">
+        <div>
+            <h2>{{ beer.name }}</h2>
+            <div class="card-style" style="font-size:16px; margin-top:4px;">{{ beer.style }}</div>
+        </div>
+        <div class="detail-badges">
+            {% if beer.abv %}<span class="badge badge-abv badge-lg">{{ beer.abv }}% ABV</span>{% endif %}
+            {% if beer.ibu %}<span class="badge badge-ibu badge-lg">{{ beer.ibu }} IBU</span>{% endif %}
+        </div>
+    </div>
+
+    <div class="detail-meta">
+        <div class="meta-card">
+            <div class="meta-label">Brewery</div>
+            <div class="meta-value">{{ beer.brewery.name|default:"Unknown" }}</div>
+            {% if beer.brewery.city %}<div style="color:var(--text-muted); font-size:13px; margin-top:4px;">{{ beer.brewery.city }}, {{ beer.brewery.state }}</div>{% endif %}
+        </div>
+        <div class="meta-card">
+            <div class="meta-label">Rating</div>
+            <div class="detail-rating">
+                <span class="detail-stars">
+                    {% with stars=beer.avg_rating|floatformat:0 %}
+                    {% for i in "12345" %}{% if forloop.counter <= stars|add:0 %}★{% else %}☆{% endif %}{% endfor %}
+                    {% endwith %}
+                </span>
+                <span class="rating-count">({{ beer.rating_count }} ratings)</span>
+            </div>
+        </div>
+        <div class="meta-card">
+            <div class="meta-label">Added</div>
+            <div class="meta-value" style="font-size:15px;">{{ beer.created_at|date:"M d, Y" }}</div>
+        </div>
+    </div>
+
+    {% if beer.description %}
+    <p class="detail-desc">{{ beer.description }}</p>
+    {% endif %}
+
+    <a href="/admin/beers/beer/{{ beer.pk }}/change/" class="edit-link" target="_blank">Edit in Admin</a>
+</div>
+{% endblock %}

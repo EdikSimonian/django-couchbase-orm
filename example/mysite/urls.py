@@ -8,6 +8,9 @@ from wagtail.documents import urls as wagtaildocs_urls
 urlpatterns = [
     path("admin/", include(wagtailadmin_urls)),
     path("documents/", include(wagtaildocs_urls)),
+    # Beer app (API + web UI)
+    path("", include("beers.urls")),
+    # Wagtail catch-all (must be last)
     path("", include(wagtail_urls)),
 ]
 

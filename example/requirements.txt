@@ -1,5 +1,6 @@
 django>=4.2
 wagtail>=5.0
 django-couchbase-orm>=1.0.0
+djangorestframework>=3.14
 gunicorn>=21.0
 whitenoise>=6.0
