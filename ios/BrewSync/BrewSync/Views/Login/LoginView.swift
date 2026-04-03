@@ -13,14 +13,16 @@ struct LoginView: View {
 
                 // Logo
                 VStack(spacing: 12) {
-                    Text("🍺")
-                        .font(.system(size: 72))
+                    Image(systemName: "mug.fill")
+                        .font(.system(size: 64))
+                        .foregroundColor(Theme.accent)
                     Text("BrewSync")
                         .font(.system(size: 36, weight: .bold))
                         .foregroundColor(Theme.accentLight)
-                    Text("Craft beer, synced everywhere")
+                    Text("Where Django, Couchbase, and beer\nwalk into a bucket")
                         .font(.subheadline)
                         .foregroundColor(Theme.textMuted)
+                        .multilineTextAlignment(.center)
                 }
 
                 Spacer()
