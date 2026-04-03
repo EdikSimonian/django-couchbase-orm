@@ -53,6 +53,8 @@ wagtail = [
 Homepage = "https://github.com/EdikSimonian/django-couchbase-orm"
 Repository = "https://github.com/EdikSimonian/django-couchbase-orm"
 Issues = "https://github.com/EdikSimonian/django-couchbase-orm/issues"
+Demo = "https://django-couchbase-orm-production.up.railway.app"
+Documentation = "https://github.com/EdikSimonian/django-couchbase-orm/tree/main/docs"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/django_couchbase_orm"]

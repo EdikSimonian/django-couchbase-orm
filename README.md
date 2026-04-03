@@ -6,6 +6,9 @@
 [![Python](https://img.shields.io/pypi/pyversions/django-couchbase-orm)](https://pypi.org/project/django-couchbase-orm/)
 [![License](https://img.shields.io/github/license/EdikSimonian/django-couchbase-orm)](https://github.com/EdikSimonian/django-couchbase-orm/blob/main/LICENSE)
 
+> **Live Demo:** [django-couchbase-orm-production.up.railway.app](https://django-couchbase-orm-production.up.railway.app)
+> A full Django + Wagtail CMS + DRF beer catalog running on Couchbase Capella. Browse [beers](https://django-couchbase-orm-production.up.railway.app/beers/), read the [blog](https://django-couchbase-orm-production.up.railway.app/blog/), or explore the [Wagtail admin](https://django-couchbase-orm-production.up.railway.app/admin/).
+
 Use Couchbase as your Django database. Drop-in backend for `django.db.models.Model` plus a standalone Document API for Couchbase-native patterns.
 
 **Docs:** [Database Backend](docs/database-backend.md) | [Document API](docs/document-api.md) | [Wagtail](docs/wagtail.md) | [Hybrid Architecture](docs/hybrid.md) | [Testing](docs/testing.md)
@@ -99,9 +102,22 @@ Everything you'd expect from a Django database backend:
 - ModelForm, DRF ModelSerializer
 - Wagtail CMS (page tree, publishing, admin)
 
+### SQL-to-N1QL Translation
+
+The backend transparently handles the differences between SQL and N1QL:
+
+| SQL | N1QL (handled automatically) |
+|-----|-----|
+| `INSERT INTO` | `UPSERT INTO` (idempotent) |
+| `SUBSTRING(s, pos)` | `SUBSTR(s, pos-1)` (0-indexed) |
+| `IS NULL` | `IS NOT VALUED` (handles MISSING) |
+| `CAST(x AS INT)` | `TONUMBER(x)` |
+| `AUTO_INCREMENT` | Atomic counter (`binary.increment`) |
+| Sequential IDs | `CouchbaseAutoField` (integer PKs) |
+
 ### Wagtail Support
 
-Wagtail works with the Couchbase backend:
+Wagtail CMS works fully with the Couchbase backend. See the [live demo](https://django-couchbase-orm-production.up.railway.app/admin/) for a working example.
 
 ```python
 INSTALLED_APPS = [
@@ -113,6 +129,22 @@ INSTALLED_APPS = [
 # manage.py migrate - creates all Wagtail collections
 # manage.py createsuperuser - create admin user
 # Page tree, publishing, editing, images, documents all work
+```
+
+### Couchbase Capella (Cloud)
+
+Works with Couchbase Capella out of the box:
+
+```python
+DATABASES = {
+    "default": {
+        "ENGINE": "django_couchbase_orm.db.backends.couchbase",
+        "NAME": "my-bucket",
+        "USER": "dbuser",
+        "PASSWORD": "dbpassword",
+        "HOST": "couchbases://cb.xxxxx.cloud.couchbase.com",
+    }
+}
 ```
 
 ## Document API Features
@@ -207,12 +239,13 @@ If you use the database backend, the Document API auto-derives its config from `
 
 - **Transactions**: Couchbase ACID transactions require multi-node clusters. `atomic()` runs as a no-op on single-node setups.
 - **Window functions**: N1QL doesn't support `OVER()` clauses.
+- **Page moves**: Wagtail page tree moves use raw SQL with reserved words. Use delete + recreate as a workaround.
 - **Correlated subqueries with GROUP BY**: Some complex query patterns return empty results gracefully instead of crashing.
 - **Multi-table inheritance**: Works but may have performance implications with N1QL JOINs.
 
 ## Tests
 
-**940+ tests** across 38 test modules, tested on Python 3.10 – 3.13.
+**928+ tests** across 38 test modules, tested on Python 3.10 - 3.13.
 
 | Suite | Tests | What's Covered |
 |-------|------:|----------------|
@@ -222,19 +255,31 @@ If you use the database backend, the Document API auto-derives its config from `
 | Backend Phase 3 | 23 | Django admin, auth permissions, forms, sessions |
 | Backend Phase 4 | 18 | Migrations, schema ops, custom models |
 | Backend Phase 5 | 21 | Shared connections, subqueries, bulk ops, edge cases |
+| Security | 27 | Injection prevention, password isolation, backtick escaping |
+| Wagtail CRUD | 28 | Page create, publish, edit, unpublish, delete, revisions |
 
 **Overall: 91%+ unit test coverage, 0 known vulnerabilities (pip-audit clean).**
 
 ```bash
-# Document API tests (no Couchbase required)
-pytest tests/
+# All tests (requires local Couchbase)
+CB_BUCKET=testbucket pytest tests/ -p no:django --ignore=tests/test_wagtail_urls.py
 
-# Backend integration tests (requires local Couchbase)
-DJANGO_SETTINGS_MODULE=tests.test_backend_settings pytest tests/test_backend_*.py
+# Document API tests only (no Couchbase required)
+pytest tests/ -m "not integration" -p no:django
 
 # Coverage
 coverage run -m pytest tests/ && coverage report --show-missing --include="src/*"
 ```
+
+## Example Project
+
+The [`example/`](example/) directory contains a complete Django + Wagtail + DRF project (BrewSync) deployed at the [live demo](https://django-couchbase-orm-production.up.railway.app). It includes:
+
+- Wagtail CMS with HomePage, BlogIndexPage, BlogPage
+- Beer catalog with Brewery/Beer models
+- DRF REST API (`/api/beers/`, `/api/breweries/`)
+- Dark brewery theme with search and filtering
+- Deployed on Railway with Couchbase Capella
 
 ## Development
 
