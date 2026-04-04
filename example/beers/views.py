@@ -165,14 +165,21 @@ def _get_or_create_social_user(provider, social_id, email, full_name):
 
 
 def _issue_oidc_tokens(user):
-    """Issue OAuth2/OIDC tokens for the given user (same as DOT would)."""
+    """Issue OAuth2/OIDC tokens for the given user, matching DOT's format exactly."""
+    import base64
+    import datetime
+    import uuid
+
+    from cryptography.hazmat.primitives import serialization
+    from django.conf import settings as django_settings
+    from jwt.algorithms import RSAAlgorithm
+
     app = Application.objects.filter(client_id="brewsync-ios").first()
     if not app:
         raise ValueError("OAuth application 'brewsync-ios' not found")
 
-    expires = time.time() + oauth2_settings.ACCESS_TOKEN_EXPIRE_SECONDS
-    from django.utils import timezone
-    import datetime
+    now = int(time.time())
+    expires = now + oauth2_settings.ACCESS_TOKEN_EXPIRE_SECONDS
 
     access = AccessToken.objects.create(
         user=user,
@@ -188,30 +195,11 @@ def _issue_oidc_tokens(user):
         access_token=access,
     )
 
-    # Build ID token JWT
-    from oauth2_provider.models import get_id_token_model
-    IDToken = get_id_token_model()
-    id_token_obj = IDToken.objects.create(
-        user=user,
-        application=app,
-        expires=access.expires,
-        scope=access.scope,
-    )
-
-    # Generate signed JWT with claims, including kid header so App Services
-    # can verify against Django's JWKS endpoint
+    # Compute kid (RFC 7638 JWK Thumbprint) — matches what DOT publishes in JWKS
     private_key = oauth2_settings.OIDC_RSA_PRIVATE_KEY
-    from django.conf import settings as django_settings
-    issuer = django_settings.WAGTAILADMIN_BASE_URL.rstrip("/") + "/o"
-
-    # Compute the kid to match what DOT publishes in JWKS
-    from jwt.algorithms import RSAAlgorithm
-    from cryptography.hazmat.primitives import serialization
     private_key_obj = serialization.load_pem_private_key(private_key.encode(), password=None)
     public_key_obj = private_key_obj.public_key()
     jwk_dict = json.loads(RSAAlgorithm.to_jwk(public_key_obj))
-    # kid is base64url(SHA-256(JWK thumbprint)) — same as DOT computes
-    import base64
     thumbprint_input = json.dumps(
         {"e": jwk_dict["e"], "kty": jwk_dict["kty"], "n": jwk_dict["n"]},
         separators=(",", ":"),
@@ -219,13 +207,25 @@ def _issue_oidc_tokens(user):
     ).encode()
     kid = base64.urlsafe_b64encode(hashlib.sha256(thumbprint_input).digest()).rstrip(b"=").decode()
 
+    # Compute at_hash: left-half of SHA-256 of the access token, base64url-encoded
+    at_digest = hashlib.sha256(access.token.encode()).digest()
+    at_hash = base64.urlsafe_b64encode(at_digest[:16]).decode().rstrip("=")
+
+    # Issuer: DOT uses the base URL without /o path
+    issuer = django_settings.WAGTAILADMIN_BASE_URL.rstrip("/") + "/o"
+
+    # Build claims matching DOT's exact format
     groups = list(user.groups.values_list("name", flat=True))
     claims = {
+        "aud": app.client_id,            # plain string, not array
+        "iat": now,
+        "at_hash": at_hash,
+        "sub": str(user.pk),             # DOT uses user PK as string, not username
         "iss": issuer,
-        "sub": user.username,
-        "aud": app.client_id,
-        "exp": int(expires),
-        "iat": int(time.time()),
+        "exp": expires,
+        "auth_time": now,
+        "jti": str(uuid.uuid4()),
+        # Custom claims (from get_additional_claims)
         "preferred_username": user.username,
         "email": user.email,
         "groups": groups,
