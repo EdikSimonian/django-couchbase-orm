@@ -211,8 +211,16 @@ def _issue_oidc_tokens(user):
     at_digest = hashlib.sha256(access.token.encode()).digest()
     at_hash = base64.urlsafe_b64encode(at_digest[:16]).decode().rstrip("=")
 
-    # Issuer: DOT uses the base URL without /o path
-    issuer = django_settings.WAGTAILADMIN_BASE_URL.rstrip("/") + "/o"
+    # Issuer must match what DOT serves at /.well-known/openid-configuration
+    # DOT derives it from the request URL, but we don't have a request here.
+    # Use DJANGO_CSRF_TRUSTED_ORIGINS or DJANGO_ALLOWED_HOSTS for the real domain.
+    base_url = os.environ.get(
+        "DJANGO_CSRF_TRUSTED_ORIGINS", ""
+    ).split(",")[0].strip()
+    if not base_url:
+        host = os.environ.get("DJANGO_ALLOWED_HOSTS", "localhost").split(",")[0].strip()
+        base_url = f"https://{host}"
+    issuer = base_url.rstrip("/") + "/o"
 
     # Build claims matching DOT's exact format
     groups = list(user.groups.values_list("name", flat=True))
