@@ -4,6 +4,7 @@ import CouchbaseLiteSwift
 struct ContentView: View {
     @ObservedObject var auth = AuthManager.shared
     @ObservedObject var replicator = ReplicatorManager.shared
+    @State private var syncStarted = false
 
     var body: some View {
         ZStack {
@@ -48,18 +49,20 @@ struct ContentView: View {
             Database.log.console.domains = .all
             Database.log.console.level = .warning
         }
-        .task {
-            // On launch, if we have stored credentials, refresh session and start sync
-            if auth.isAuthenticated {
-                await startSync()
-            }
-        }
         .onChange(of: auth.isAuthenticated) { authenticated in
-            if authenticated {
+            if authenticated && !syncStarted {
+                syncStarted = true
                 Task { await startSync() }
-            } else {
+            } else if !authenticated {
+                syncStarted = false
                 ReplicatorManager.shared.stop()
                 DatabaseManager.shared.close()
+            }
+        }
+        .task {
+            if auth.isAuthenticated && !syncStarted {
+                syncStarted = true
+                await startSync()
             }
         }
     }
@@ -69,15 +72,15 @@ struct ContentView: View {
             try DatabaseManager.shared.initialize()
         } catch {
             print("[App] Database init failed: \(error)")
+            syncStarted = false
             return
         }
 
-        // Get a fresh session (stored one may be expired)
         if let session = await AuthManager.shared.refreshSession() {
             ReplicatorManager.shared.start(sessionID: session)
         } else {
-            // ID token expired and refresh failed — need full re-login
-            print("[App] Session refresh failed, logging out")
+            print("[App] Session refresh failed, need re-login")
+            syncStarted = false
             AuthManager.shared.logout()
         }
     }
