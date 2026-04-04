@@ -9,6 +9,8 @@ from wagtail import urls as wagtail_urls
 from wagtail.admin import urls as wagtailadmin_urls
 from wagtail.documents import urls as wagtaildocs_urls
 
+from wagtail.contrib.sitemaps import Sitemap as WagtailSitemap
+
 from beers.models import Beer
 
 sitemaps = {
@@ -17,6 +19,7 @@ sitemaps = {
         priority=0.6,
         changefreq="weekly",
     ),
+    "wagtail": WagtailSitemap,
 }
 
 urlpatterns = [
