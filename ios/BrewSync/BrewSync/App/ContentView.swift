@@ -49,25 +49,27 @@ struct ContentView: View {
             Database.log.console.domains = .all
             Database.log.console.level = .warning
         }
-        .onChange(of: auth.isAuthenticated) { authenticated in
-            if authenticated && !syncStarted {
-                syncStarted = true
-                Task { await startSync() }
-            } else if !authenticated {
-                syncStarted = false
-                ReplicatorManager.shared.stop()
-                DatabaseManager.shared.close()
+        .task {
+            if auth.isAuthenticated {
+                await startSync()
             }
         }
-        .task {
-            if auth.isAuthenticated && !syncStarted {
-                syncStarted = true
-                await startSync()
+        .onChange(of: auth.isAuthenticated) { authenticated in
+            if authenticated {
+                Task { await startSync() }
+            } else if !authenticated {
+                // Only close DB on explicit logout
+                ReplicatorManager.shared.stop()
+                DatabaseManager.shared.close()
+                syncStarted = false
             }
         }
     }
 
     private func startSync() async {
+        guard !syncStarted else { return }
+        syncStarted = true
+
         do {
             try DatabaseManager.shared.initialize()
         } catch {

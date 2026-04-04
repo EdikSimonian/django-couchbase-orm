@@ -15,6 +15,9 @@ class DatabaseManager {
     private init() {}
 
     func initialize() throws {
+        // Don't re-initialize if already open
+        if database != nil { return }
+
         database = try Database(name: dbName)
         guard let db = database else { return }
 
