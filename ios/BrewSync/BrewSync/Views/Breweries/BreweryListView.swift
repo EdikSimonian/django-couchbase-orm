@@ -8,7 +8,14 @@ class BreweryListViewModel: ObservableObject {
 
     func startObserving() {
         guard queryToken == nil,
-              let collection = DatabaseManager.shared.breweryCollection else { return }
+              let collection = DatabaseManager.shared.breweryCollection else {
+            print("[Breweries] No brewery collection available")
+            // Fallback: try loading directly
+            breweries = DatabaseManager.shared.getAllBreweries()
+            print("[Breweries] Fallback loaded \(breweries.count) breweries")
+            return
+        }
+        print("[Breweries] Starting Live Query on collection: \(collection.name)")
 
         let query = QueryBuilder
             .select(SelectResult.all(), SelectResult.expression(Meta.id))
@@ -30,6 +37,7 @@ class BreweryListViewModel: ObservableObject {
                     website: dict.string(forKey: "website") ?? ""
                 )
             }
+            print("[Breweries] Live Query returned \(list.count) breweries")
             DispatchQueue.main.async { self?.breweries = list }
         }
     }
@@ -44,6 +52,7 @@ struct BreweryListView: View {
     @StateObject private var viewModel = BreweryListViewModel()
 
     var body: some View {
+        NavigationStack {
         ZStack {
             Theme.bg.ignoresSafeArea()
 
@@ -95,5 +104,6 @@ struct BreweryListView: View {
         .navigationTitle("Breweries")
         .onAppear { viewModel.startObserving() }
         .onDisappear { viewModel.stopObserving() }
+        }
     }
 }
