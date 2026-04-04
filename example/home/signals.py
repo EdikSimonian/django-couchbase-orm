@@ -1,9 +1,4 @@
-"""Embed title and slug into BlogPage documents for mobile sync.
-
-Wagtail stores page title in wagtailcore_page (base table) and blog
-fields in home_blogpage. Mobile app needs title in the blogpage doc
-to avoid joining two collections.
-"""
+"""Embed title and slug into BlogPage documents for mobile sync."""
 from django.db import connection
 
 
@@ -14,11 +9,16 @@ def embed_blog_title(sender, instance, **kwargs):
         return
     try:
         cursor = connection.cursor()
-        cursor.execute(
-            "UPDATE `beer-sample`.`_default`.`home_blogpage` "
-            "SET title = %s, slug = %s "
-            "WHERE page_ptr_id = %s",
-            [instance.title, instance.slug, instance.pk],
+        # Raw N1QL with inline values (safe — title/slug are from our own Wagtail data)
+        title = instance.title.replace("'", "''")
+        slug = instance.slug.replace("'", "''")
+        pk = int(instance.pk)
+        sql = (
+            f"UPDATE `beer-sample`.`_default`.`home_blogpage` "
+            f"SET title = '{title}', slug = '{slug}' "
+            f"WHERE page_ptr_id = {pk}"
         )
+        cursor.execute(sql)
+        print(f"[Signal] Embedded title '{instance.title}' into blogpage {pk}")
     except Exception as e:
         print(f"[Signal] Failed to embed blog title: {e}")
