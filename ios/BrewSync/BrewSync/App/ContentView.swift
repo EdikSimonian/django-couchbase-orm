@@ -1,4 +1,5 @@
 import SwiftUI
+import CouchbaseLiteSwift
 
 struct ContentView: View {
     @ObservedObject var auth = AuthManager.shared
@@ -43,12 +44,28 @@ struct ContentView: View {
             }
         }
         .preferredColorScheme(.dark)
+        .onAppear {
+            // Enable verbose Couchbase Lite logging
+            Database.log.console.domains = .all
+            Database.log.console.level = .verbose
+            print("[App] CouchbaseLite verbose logging enabled")
+        }
         .onChange(of: auth.isAuthenticated) { authenticated in
             if authenticated {
-                // Start database and replicator
-                try? DatabaseManager.shared.initialize()
-                ReplicatorManager.shared.start()
+                print("[App] Authenticated as \(auth.username), admin=\(auth.isAdmin)")
+                print("[App] Session: \(KeychainHelper.load(key: "sync_session")?.prefix(30) ?? "none")...")
+                do {
+                    try DatabaseManager.shared.initialize()
+                    print("[App] Database initialized")
+                    print("[App] Beer collection: \(DatabaseManager.shared.beerCollection?.name ?? "nil")")
+                    print("[App] Brewery collection: \(DatabaseManager.shared.breweryCollection?.name ?? "nil")")
+                    print("[App] Rating collection: \(DatabaseManager.shared.ratingCollection?.name ?? "nil")")
+                    ReplicatorManager.shared.start()
+                } catch {
+                    print("[App] Database init FAILED: \(error)")
+                }
             } else {
+                print("[App] Logged out")
                 ReplicatorManager.shared.stop()
                 DatabaseManager.shared.close()
             }

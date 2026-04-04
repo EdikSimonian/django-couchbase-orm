@@ -182,16 +182,50 @@ class AuthManager: NSObject, ObservableObject {
         request.httpBody = "{}".data(using: .utf8)
 
         let (data, response) = try await URLSession.shared.data(for: request)
-        let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+        let httpResponse = response as? HTTPURLResponse
+        let status = httpResponse?.statusCode ?? 0
         let body = String(data: data, encoding: .utf8) ?? ""
         print("[Auth] _session Bearer: status=\(status) body=\(body.prefix(200))")
 
-        guard status == 200,
-              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let sessionID = json["session_id"] as? String else {
+        // Log all response headers for debugging
+        if let headers = httpResponse?.allHeaderFields {
+            print("[Auth] _session headers: \(headers)")
+        }
+
+        guard status == 200 else {
             throw AuthError.serverError("_session failed (\(status))")
         }
-        return sessionID
+
+        // Try to get session from Set-Cookie header
+        if let setCookie = httpResponse?.value(forHTTPHeaderField: "Set-Cookie") {
+            print("[Auth] Set-Cookie: \(setCookie.prefix(80))...")
+            if let range = setCookie.range(of: "SyncGatewaySession=") {
+                let afterPrefix = setCookie[range.upperBound...]
+                let sessionValue = String(afterPrefix.prefix(while: { $0 != ";" }))
+                if !sessionValue.isEmpty {
+                    print("[Auth] Extracted session from cookie: \(sessionValue.prefix(20))...")
+                    return sessionValue
+                }
+            }
+        }
+
+        // Try cookies stored by URLSession
+        if let cookies = HTTPCookieStorage.shared.cookies(for: url) {
+            for cookie in cookies {
+                print("[Auth] Cookie: \(cookie.name) = \(cookie.value.prefix(20))...")
+                if cookie.name == "SyncGatewaySession" {
+                    return cookie.value
+                }
+            }
+        }
+
+        // Try session_id from JSON body as fallback
+        if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+           let sessionID = json["session_id"] as? String {
+            return sessionID
+        }
+
+        throw AuthError.serverError("_session returned 200 but no session cookie found")
     }
 
     private func tryOIDCChallenge(idToken: String) async throws -> String {
