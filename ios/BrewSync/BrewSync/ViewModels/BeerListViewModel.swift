@@ -12,6 +12,9 @@ class BeerListViewModel: ObservableObject {
     private var liveQuery: Query?
     private var queryToken: ListenerToken?
 
+    // Cache brewery names by ID
+    private var breweryNames: [Int: String] = [:]
+
     enum SortOption: String, CaseIterable {
         case name = "Name"
         case abv = "ABV"
@@ -39,6 +42,18 @@ class BeerListViewModel: ObservableObject {
     }
 
     func startObserving() {
+        loadBreweryNames()
+        observeBeers()
+    }
+
+    private func loadBreweryNames() {
+        let breweries = DatabaseManager.shared.getAllBreweries()
+        for b in breweries {
+            breweryNames[b.id] = b.name
+        }
+    }
+
+    private func observeBeers() {
         guard let collection = DatabaseManager.shared.beerCollection else { return }
 
         let query = QueryBuilder
@@ -46,27 +61,40 @@ class BeerListViewModel: ObservableObject {
             .from(DataSource.collection(collection))
 
         queryToken = query.addChangeListener { [weak self] change in
-            guard let results = change.results else { return }
+            guard let self = self, let results = change.results else { return }
+
+            // Refresh brewery cache
+            let breweries = DatabaseManager.shared.getAllBreweries()
+            var nameCache: [Int: String] = [:]
+            for b in breweries { nameCache[b.id] = b.name }
+
             let beers = results.compactMap { result -> Beer? in
                 guard let dict = result.dictionary(at: 0) else { return nil }
                 let docId = result.string(at: 1) ?? ""
+                let breweryId: Int? = dict.value(forKey: "brewery_id") != nil ? dict.int(forKey: "brewery_id") : nil
+                let abvVal = dict.value(forKey: "abv")
+                let abv: Double? = abvVal != nil ? dict.double(forKey: "abv") : nil
+                let ibuVal = dict.value(forKey: "ibu")
+                let ibu: Int? = ibuVal != nil ? dict.int(forKey: "ibu") : nil
                 return Beer(
                     id: Int(docId) ?? 0,
                     name: dict.string(forKey: "name") ?? "",
-                    abv: dict.contains(key: "abv") ? dict.double(forKey: "abv") : nil,
-                    ibu: dict.contains(key: "ibu") ? dict.int(forKey: "ibu") : nil,
+                    abv: abv,
+                    ibu: ibu,
                     style: dict.string(forKey: "style") ?? "",
-                    breweryId: dict.contains(key: "brewery_id") ? dict.int(forKey: "brewery_id") : nil,
+                    breweryId: breweryId,
                     description: dict.string(forKey: "description") ?? "",
                     imageUrl: dict.string(forKey: "image_url") ?? "",
                     avgRating: dict.double(forKey: "avg_rating"),
                     ratingCount: dict.int(forKey: "rating_count"),
                     createdAt: dict.string(forKey: "created_at"),
-                    updatedAt: dict.string(forKey: "updated_at")
+                    updatedAt: dict.string(forKey: "updated_at"),
+                    breweryName: breweryId.flatMap { nameCache[$0] }
                 )
             }
             DispatchQueue.main.async {
-                self?.beers = beers
+                self.breweryNames = nameCache
+                self.beers = beers
             }
         }
 
