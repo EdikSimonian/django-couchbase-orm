@@ -3,7 +3,16 @@ from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
 
 
+class SyncSafeManager(models.Manager):
+    """Excludes Sync Gateway metadata documents that lack doc_type."""
+
+    def get_queryset(self):
+        return super().get_queryset().exclude(doc_type__isnull=True).exclude(doc_type="")
+
+
 class Brewery(models.Model):
+    objects = SyncSafeManager()
+
     doc_type = models.CharField(max_length=50, default="brewery", editable=False)
     name = models.CharField(max_length=200)
     city = models.CharField(max_length=100, blank=True, default="")
@@ -27,6 +36,8 @@ class Brewery(models.Model):
 
 
 class Beer(models.Model):
+    objects = SyncSafeManager()
+
     STYLE_CHOICES = [
         ("IPA", "IPA"),
         ("Pale Ale", "Pale Ale"),
@@ -73,6 +84,8 @@ class Beer(models.Model):
 
 
 class Rating(models.Model):
+    objects = SyncSafeManager()
+
     doc_type = models.CharField(max_length=50, default="rating", editable=False)
     beer = models.ForeignKey(Beer, on_delete=models.CASCADE, related_name="ratings")
     user = models.ForeignKey(
