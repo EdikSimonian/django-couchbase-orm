@@ -4,25 +4,28 @@ import CouchbaseLiteSwift
 struct ContentView: View {
     @ObservedObject var auth = AuthManager.shared
     @ObservedObject var replicator = ReplicatorManager.shared
+    @State private var dbReady = false
 
     var body: some View {
         ZStack {
             if auth.isAuthenticated {
-                TabView {
-                    BeerListView()
-                        .tabItem {
-                            Label("Beers", systemImage: "mug.fill")
-                        }
-                    BreweryListView()
-                        .tabItem {
-                            Label("Breweries", systemImage: "building.2")
-                        }
-                    BlogView()
-                        .tabItem {
-                            Label("Blog", systemImage: "doc.richtext")
-                        }
+                if dbReady {
+                    TabView {
+                        BeerListView()
+                            .tabItem {
+                                Label("Beers", systemImage: "mug.fill")
+                            }
+                        BreweryListView()
+                            .tabItem {
+                                Label("Breweries", systemImage: "building.2")
+                            }
+                        BlogView()
+                            .tabItem {
+                                Label("Blog", systemImage: "doc.richtext")
+                            }
+                    }
+                    .tint(Theme.accent)
                 }
-                .tint(Theme.accent)
 
                 if !replicator.isConnected && replicator.status != .stopped {
                     VStack {
@@ -50,19 +53,26 @@ struct ContentView: View {
         .onAppear {
             Database.log.console.domains = .all
             Database.log.console.level = .warning
-            // Initialize DB once on app start — never close during lifecycle
+            // Initialize DB and show cached data immediately
             try? DatabaseManager.shared.initialize()
+            if auth.isAuthenticated {
+                dbReady = true
+            }
         }
         .task {
             if auth.isAuthenticated {
+                // Sync in the background — UI already shows cached data
                 await startReplicator()
             }
         }
         .onChange(of: auth.isAuthenticated) { authenticated in
             if authenticated {
+                try? DatabaseManager.shared.initialize()
+                dbReady = true
                 Task { await startReplicator() }
             } else {
                 ReplicatorManager.shared.stop()
+                dbReady = false
             }
         }
     }

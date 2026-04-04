@@ -1,6 +1,7 @@
 import AuthenticationServices
 import Foundation
 import SwiftUI
+import WebKit
 
 /// Manages OIDC authentication: login via Django, exchange token with App Services.
 @MainActor
@@ -153,7 +154,7 @@ class AuthManager: NSObject, ObservableObject {
                         continuation.resume(throwing: AuthError.cancelled)
                     }
                 }
-                session.prefersEphemeralWebBrowserSession = false
+                session.prefersEphemeralWebBrowserSession = true
                 session.presentationContextProvider = self
                 session.start()
             }
@@ -415,10 +416,28 @@ class AuthManager: NSObject, ObservableObject {
 
     func logout() {
         KeychainHelper.clearAll()
+        clearWebSessionCookies()
         isAuthenticated = false
         username = ""
         userId = 0
         isAdmin = false
+    }
+
+    /// Clear Django session cookies so ASWebAuthenticationSession doesn't auto-login
+    private func clearWebSessionCookies() {
+        let storage = HTTPCookieStorage.shared
+        if let cookies = storage.cookies {
+            for cookie in cookies {
+                storage.deleteCookie(cookie)
+            }
+        }
+        // Also clear WKWebView cookies
+        let dataStore = WKWebsiteDataStore.default()
+        dataStore.fetchDataRecords(ofTypes: WKWebsiteDataStore.allWebsiteDataTypes()) { records in
+            for record in records {
+                dataStore.removeData(ofTypes: record.dataTypes, for: [record]) { }
+            }
+        }
     }
 }
 

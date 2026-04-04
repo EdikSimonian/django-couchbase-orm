@@ -1,0 +1,87 @@
+{% extends "base.html" %}
+
+{% block title %}Privacy Policy — BrewSync{% endblock %}
+
+{% block hero %}
+<section class="hero" style="padding: 40px 20px;">
+    <h1>Privacy Policy</h1>
+    <p class="hero-sub">Last updated: April 4, 2026</p>
+</section>
+{% endblock %}
+
+{% block content %}
+<div class="cms-content" style="max-width: 800px; margin: 0 auto; padding-bottom: 60px;">
+
+<h2>Introduction</h2>
+<p>BrewSync ("we", "our", "us") is a beer discovery and rating app. This privacy policy explains how we collect, use, and protect your information when you use our iOS app and website.</p>
+
+<h2>Information We Collect</h2>
+
+<h3>Account Information</h3>
+<p>When you create an account, we collect:</p>
+<ul>
+    <li><strong>Username</strong> — chosen by you, displayed publicly alongside your ratings</li>
+    <li><strong>Email address</strong> — used for account identification and login</li>
+    <li><strong>Password</strong> — stored securely using Django's password hashing (not stored in plain text)</li>
+</ul>
+
+<h3>Social Login</h3>
+<p>If you sign in with Apple or Google, we receive:</p>
+<ul>
+    <li>Your name (Apple only, if you choose to share it)</li>
+    <li>Your email address (or a private relay address if you use Apple's Hide My Email)</li>
+    <li>A unique identifier from the provider</li>
+</ul>
+<p>We do not receive or store your Apple or Google password.</p>
+
+<h3>User-Generated Content</h3>
+<ul>
+    <li><strong>Beer ratings</strong> — your 1-5 star ratings, associated with your username</li>
+</ul>
+
+<h3>Automatically Collected</h3>
+<p>We do not collect analytics, device information, location data, or tracking identifiers. We do not use third-party analytics or advertising SDKs.</p>
+
+<h2>How We Use Your Information</h2>
+<ul>
+    <li>To authenticate you and provide access to the app</li>
+    <li>To display your ratings alongside your username</li>
+    <li>To compute average beer ratings from all users</li>
+    <li>To sync your data between the website and the iOS app</li>
+</ul>
+
+<h2>Data Storage</h2>
+<p>Your data is stored in Couchbase Capella, a cloud database service hosted in the United States. Data is synced between the server and your device using Couchbase Lite (local on-device database) and Couchbase App Services (sync layer).</p>
+
+<h2>Data Sharing</h2>
+<p>We do not sell, rent, or share your personal information with third parties. Your username and ratings are visible to other users of the app.</p>
+
+<h2>Data Retention and Deletion</h2>
+<p>You can delete your account at any time from the app (user menu → Delete Account). This permanently removes:</p>
+<ul>
+    <li>Your user account</li>
+    <li>All your ratings</li>
+    <li>All authentication tokens</li>
+</ul>
+<p>Account deletion is immediate and irreversible.</p>
+
+<h2>Security</h2>
+<p>We use industry-standard security practices including:</p>
+<ul>
+    <li>HTTPS encryption for all data in transit</li>
+    <li>OAuth 2.0 / OpenID Connect for authentication</li>
+    <li>Hashed passwords (never stored in plain text)</li>
+    <li>Secure token storage in the iOS Keychain</li>
+</ul>
+
+<h2>Children's Privacy</h2>
+<p>BrewSync is not intended for children under 17. We do not knowingly collect information from children.</p>
+
+<h2>Changes to This Policy</h2>
+<p>We may update this policy from time to time. Changes will be posted on this page with an updated date.</p>
+
+<h2>Contact</h2>
+<p>If you have questions about this privacy policy, contact us at <a href="mailto:edisimon@gmail.com">edisimon@gmail.com</a>.</p>
+
+</div>
+{% endblock %}
