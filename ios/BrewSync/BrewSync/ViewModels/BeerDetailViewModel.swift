@@ -9,12 +9,30 @@ class BeerDetailViewModel: ObservableObject {
     @Published var ratings: [Rating] = []
 
     private let auth = AuthManager.shared
+    private var refreshTimer: Timer?
 
     init(beer: Beer) {
         self.beer = beer
     }
 
+    func startRefreshing() {
+        load()
+        refreshTimer = Timer.scheduledTimer(withTimeInterval: 3, repeats: true) { [weak self] _ in
+            DispatchQueue.main.async { self?.load() }
+        }
+    }
+
+    func stopRefreshing() {
+        refreshTimer?.invalidate()
+        refreshTimer = nil
+    }
+
     func load() {
+        // Reload beer from local DB (may have been updated by sync)
+        if let updated = DatabaseManager.shared.getBeer(id: beer.id) {
+            beer = updated
+        }
+
         // Load brewery
         if let breweryId = beer.breweryId {
             brewery = DatabaseManager.shared.getBrewery(id: breweryId)

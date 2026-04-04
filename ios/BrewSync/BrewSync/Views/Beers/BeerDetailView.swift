@@ -118,7 +118,8 @@ struct BeerDetailView: View {
         } message: {
             Text("This will permanently delete \(viewModel.beer.name).")
         }
-        .onAppear { viewModel.load() }
+        .onAppear { viewModel.startRefreshing() }
+        .onDisappear { viewModel.stopRefreshing() }
     }
 }
 
