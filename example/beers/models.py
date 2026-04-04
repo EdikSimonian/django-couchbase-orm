@@ -19,7 +19,7 @@ class Brewery(models.Model):
         ordering = ["name"]
 
     def __str__(self):
-        return self.name
+        return self.name or f"Brewery #{self.pk}"
 
     def save(self, **kwargs):
         self.doc_type = "brewery"
@@ -64,7 +64,8 @@ class Beer(models.Model):
         ordering = ["name"]
 
     def __str__(self):
-        return f"{self.name} ({self.style})" if self.style else self.name
+        name = self.name or f"Beer #{self.pk}"
+        return f"{name} ({self.style})" if self.style else name
 
     def save(self, **kwargs):
         self.doc_type = "beer"
