@@ -4,7 +4,6 @@ import CouchbaseLiteSwift
 struct ContentView: View {
     @ObservedObject var auth = AuthManager.shared
     @ObservedObject var replicator = ReplicatorManager.shared
-    @State private var syncStarted = false
 
     var body: some View {
         ZStack {
@@ -21,7 +20,6 @@ struct ContentView: View {
                 }
                 .tint(Theme.accent)
 
-                // Offline indicator
                 if !replicator.isConnected && replicator.status != .stopped {
                     VStack {
                         HStack(spacing: 6) {
@@ -48,41 +46,28 @@ struct ContentView: View {
         .onAppear {
             Database.log.console.domains = .all
             Database.log.console.level = .warning
+            // Initialize DB once on app start — never close during lifecycle
+            try? DatabaseManager.shared.initialize()
         }
         .task {
             if auth.isAuthenticated {
-                await startSync()
+                await startReplicator()
             }
         }
         .onChange(of: auth.isAuthenticated) { authenticated in
             if authenticated {
-                Task { await startSync() }
-            } else if !authenticated {
-                // Only close DB on explicit logout
+                Task { await startReplicator() }
+            } else {
                 ReplicatorManager.shared.stop()
-                DatabaseManager.shared.close()
-                syncStarted = false
             }
         }
     }
 
-    private func startSync() async {
-        guard !syncStarted else { return }
-        syncStarted = true
-
-        do {
-            try DatabaseManager.shared.initialize()
-        } catch {
-            print("[App] Database init failed: \(error)")
-            syncStarted = false
-            return
-        }
-
+    private func startReplicator() async {
         if let session = await AuthManager.shared.refreshSession() {
             ReplicatorManager.shared.start(sessionID: session)
         } else {
             print("[App] Session refresh failed, need re-login")
-            syncStarted = false
             AuthManager.shared.logout()
         }
     }

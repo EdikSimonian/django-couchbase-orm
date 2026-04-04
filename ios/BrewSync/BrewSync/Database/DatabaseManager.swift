@@ -249,5 +249,8 @@ class DatabaseManager {
     func close() {
         try? database?.close()
         database = nil
+        beerCollection = nil
+        breweryCollection = nil
+        ratingCollection = nil
     }
 }
