@@ -63,9 +63,9 @@
 
 {% if beer.description %}<p class="detail-desc">{{ beer.description }}</p>{% endif %}
 
-{% if ratings %}
-<div class="ratings-section">
-    <h2>User Ratings ({{ ratings|length }})</h2>
+<div class="ratings-section" id="ratings-section">
+    <h2>User Ratings (<span id="ratings-count">{{ ratings|length }}</span>)</h2>
+    <div id="ratings-list">
     {% for rating in ratings %}
     <div class="rating-item">
         <div>
@@ -77,6 +77,55 @@
         </div>
     </div>
     {% endfor %}
+    </div>
 </div>
-{% endif %}
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const beerId = {{ beer.pk }};
+
+function makeStars(score) {
+    let s = '';
+    for (let i = 1; i <= 5; i++) s += i <= score ? '★' : '☆';
+    return s;
+}
+
+function refresh() {
+    // Fetch updated beer data
+    fetch('/api/beers/' + beerId + '/')
+        .then(r => r.json())
+        .then(beer => {
+            // Update rating stars
+            const stars = Math.round(beer.avg_rating);
+            const starsEl = document.querySelector('.stars');
+            if (starsEl) starsEl.innerHTML = makeStars(stars);
+
+            // Update rating score and count
+            const scoreEl = document.querySelector('.meta-card .stars + span');
+            if (scoreEl) scoreEl.textContent = beer.avg_rating.toFixed(1);
+
+            const countEl = document.querySelector('.rating-count');
+            if (countEl) countEl.textContent = '(' + beer.rating_count + ' rating' + (beer.rating_count !== 1 ? 's' : '') + ')';
+        });
+
+    // Fetch ratings list
+    fetch('/api/ratings/?beer_id=' + beerId)
+        .then(r => r.json())
+        .then(data => {
+            const ratings = data.results || data;
+            document.getElementById('ratings-count').textContent = ratings.length;
+
+            const list = document.getElementById('ratings-list');
+            list.innerHTML = ratings.map(r => {
+                const date = r.created_at ? new Date(r.created_at).toLocaleDateString('en-US', {month: 'short', day: 'numeric', year: 'numeric'}) : '';
+                return '<div class="rating-item"><div><div class="rating-user">' + r.username +
+                    '</div><div class="rating-date">' + date +
+                    '</div></div><div class="rating-stars-sm">' + makeStars(r.score) + '</div></div>';
+            }).join('');
+        });
+}
+
+setInterval(refresh, 5000);
+</script>
 {% endblock %}
