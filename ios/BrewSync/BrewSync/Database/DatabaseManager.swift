@@ -72,6 +72,7 @@ class DatabaseManager {
     func saveBeer(_ beer: Beer) throws {
         guard let collection = beerCollection else { return }
         let doc = MutableDocument(id: String(beer.id))
+        doc.setInt(beer.id, forKey: "id")
         doc.setString("beer", forKey: "doc_type")
         doc.setString(beer.name, forKey: "name")
         doc.setValue(beer.abv, forKey: "abv")
