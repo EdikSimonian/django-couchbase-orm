@@ -296,11 +296,16 @@ class SocialTokenExchangeView(APIView):
             raise ValueError("Apple public key not found")
 
         public_key = jwt.algorithms.RSAAlgorithm.from_jwk(key_data)
+        # Accept both App ID (native iOS) and Services ID (web) as valid audiences
+        valid_audiences = [
+            os.environ.get("APPLE_CLIENT_ID", "com.brewsync.auth"),
+            os.environ.get("APPLE_APP_ID", "com.brewsync.app"),
+        ]
         claims = jwt.decode(
             id_token_str,
             public_key,
             algorithms=["RS256"],
-            audience=os.environ.get("APPLE_CLIENT_ID", "com.brewsync.auth"),
+            audience=valid_audiences,
             issuer="https://appleid.apple.com",
         )
 
