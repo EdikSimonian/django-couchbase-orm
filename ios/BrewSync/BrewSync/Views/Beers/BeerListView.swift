@@ -11,6 +11,42 @@ struct BeerListView: View {
                 Theme.bg.ignoresSafeArea()
 
                 VStack(spacing: 0) {
+                    // Custom header (replaces toolbar to avoid iOS 26 nav bar bugs)
+                    HStack {
+                        Image(systemName: "mug.fill")
+                            .font(.title2)
+                            .foregroundColor(Theme.accent)
+                        Text("BrewSync")
+                            .font(.system(size: 20, weight: .bold))
+                            .foregroundColor(Theme.accentLight)
+                        Spacer()
+                        if auth.isAdmin {
+                            Button {
+                                showAddBeer = true
+                            } label: {
+                                Image(systemName: "plus.circle.fill")
+                                    .font(.title3)
+                                    .foregroundColor(Theme.accent)
+                            }
+                        }
+                        Menu {
+                            Text("Signed in as \(auth.username)")
+                            if auth.isAdmin {
+                                Label("Admin", systemImage: "shield.checkered")
+                            }
+                            Divider()
+                            Button("Sign Out", role: .destructive) {
+                                auth.logout()
+                            }
+                        } label: {
+                            Image(systemName: "person.circle")
+                                .font(.title3)
+                                .foregroundColor(Theme.textMuted)
+                        }
+                    }
+                    .padding(.horizontal)
+                    .padding(.vertical, 10)
+
                     // Search bar
                     HStack {
                         Image(systemName: "magnifyingglass")
@@ -22,7 +58,6 @@ struct BeerListView: View {
                     .background(Theme.card)
                     .cornerRadius(10)
                     .padding(.horizontal)
-                    .padding(.top, 8)
 
                     // Style filter chips
                     ScrollView(.horizontal, showsIndicators: false) {
@@ -75,46 +110,7 @@ struct BeerListView: View {
                     }
                 }
             }
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .principal) {
-                    EmptyView()
-                }
-                ToolbarItem(placement: .topBarLeading) {
-                    HStack(spacing: 6) {
-                        Image(systemName: "mug.fill")
-                            .foregroundColor(Theme.accent)
-                        Text("BrewSync")
-                            .font(.system(size: 20, weight: .bold))
-                            .foregroundColor(Theme.accentLight)
-                    }
-                }
-                ToolbarItem(placement: .topBarTrailing) {
-                    HStack(spacing: 12) {
-                        if auth.isAdmin {
-                            Button {
-                                showAddBeer = true
-                            } label: {
-                                Image(systemName: "plus.circle.fill")
-                                    .foregroundColor(Theme.accent)
-                            }
-                        }
-                        Menu {
-                            Text("Signed in as \(auth.username)")
-                            if auth.isAdmin {
-                                Label("Admin", systemImage: "shield.checkered")
-                            }
-                            Divider()
-                            Button("Sign Out", role: .destructive) {
-                                auth.logout()
-                            }
-                        } label: {
-                            Image(systemName: "person.circle")
-                                .foregroundColor(Theme.textMuted)
-                        }
-                    }
-                }
-            }
+            .navigationBarHidden(true)
             .sheet(isPresented: $showAddBeer) {
                 BeerFormView(mode: .add)
             }
