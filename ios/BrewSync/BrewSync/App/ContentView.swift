@@ -11,7 +11,7 @@ struct ContentView: View {
                 TabView {
                     BeerListView()
                         .tabItem {
-                            Label("Beers", systemImage: "drop.fill")
+                            Label("Beers", systemImage: "mug.fill")
                         }
                     BreweryListView()
                         .tabItem {
