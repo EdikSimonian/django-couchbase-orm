@@ -1,6 +1,6 @@
 import Foundation
 
-struct Brewery: Identifiable, Codable {
+struct Brewery: Identifiable, Codable, Hashable {
     let id: Int
     var docType: String = "brewery"
     var name: String

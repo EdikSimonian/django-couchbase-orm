@@ -17,6 +17,10 @@ struct ContentView: View {
                         .tabItem {
                             Label("Breweries", systemImage: "building.2")
                         }
+                    BlogView()
+                        .tabItem {
+                            Label("Blog", systemImage: "doc.richtext")
+                        }
                 }
                 .tint(Theme.accent)
 

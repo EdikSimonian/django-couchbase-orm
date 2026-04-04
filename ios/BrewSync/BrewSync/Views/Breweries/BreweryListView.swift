@@ -50,6 +50,7 @@ struct BreweryListView: View {
     @StateObject private var viewModel = BreweryListViewModel()
     @ObservedObject var auth = AuthManager.shared
     @State private var showAddBrewery = false
+    @State private var showEditBrewery: Brewery?
 
     var body: some View {
         NavigationStack {
@@ -74,6 +75,20 @@ struct BreweryListView: View {
                                     .font(.title3)
                                     .foregroundColor(Theme.accent)
                             }
+                        }
+                        Menu {
+                            Text("Signed in as \(auth.username)")
+                            if auth.isAdmin {
+                                Label("Admin", systemImage: "shield.checkered")
+                            }
+                            Divider()
+                            Button("Sign Out", role: .destructive) {
+                                auth.logout()
+                            }
+                        } label: {
+                            Image(systemName: "person.circle")
+                                .font(.title3)
+                                .foregroundColor(Theme.textMuted)
                         }
                     }
                     .padding(.horizontal)
@@ -109,6 +124,20 @@ struct BreweryListView: View {
                         ], spacing: 12) {
                             ForEach(viewModel.filteredBreweries) { brewery in
                                 BreweryCardView(brewery: brewery)
+                                    .contextMenu {
+                                        if auth.isAdmin {
+                                            Button {
+                                                showEditBrewery = brewery
+                                            } label: {
+                                                Label("Edit", systemImage: "pencil")
+                                            }
+                                            Button(role: .destructive) {
+                                                try? DatabaseManager.shared.deleteBrewery(id: brewery.id)
+                                            } label: {
+                                                Label("Delete", systemImage: "trash")
+                                            }
+                                        }
+                                    }
                             }
                         }
                         .padding(.horizontal)
@@ -119,6 +148,9 @@ struct BreweryListView: View {
             .navigationBarHidden(true)
             .sheet(isPresented: $showAddBrewery) {
                 BreweryFormView(mode: .add)
+            }
+            .sheet(item: $showEditBrewery) { brewery in
+                BreweryFormView(mode: .edit(brewery))
             }
             .onAppear { viewModel.startObserving() }
             .onDisappear { viewModel.stopObserving() }

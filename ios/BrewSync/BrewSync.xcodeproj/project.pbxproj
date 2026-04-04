@@ -28,6 +28,7 @@
 		B72EADB12CFA3E5D11779AAA /* Brewery.swift in Sources */ = {isa = PBXBuildFile; fileRef = F20F759664AFC9E85D2C8B10 /* Brewery.swift */; };
 		CDB81D090149A067780418AD /* BrewSyncApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D703E1E1B42A7AF69B459F4 /* BrewSyncApp.swift */; };
 		D25ED69A006BA5A6039313B3 /* ReplicatorManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B56E2E51C5644CB4E0F11C7 /* ReplicatorManager.swift */; };
+		DBE63132F7DD8DF2D8378A26 /* BlogView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF88FB134261F7D37172A591 /* BlogView.swift */; };
 		F2DE67E89AE2182236CD2B1E /* BreweryListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7F4582592EC95A43BFD0F1B8 /* BreweryListView.swift */; };
 		FEC2F6669211A0F0FA8C65AC /* BeerListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F2E7CA0F95576B4B854125EB /* BeerListView.swift */; };
 /* End PBXBuildFile section */
@@ -51,6 +52,7 @@
 		9B56E2E51C5644CB4E0F11C7 /* ReplicatorManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReplicatorManager.swift; sourceTree = "<group>"; };
 		A3F7FB9738584CEE7B0D3606 /* RatingStarsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RatingStarsView.swift; sourceTree = "<group>"; };
 		B089C3CB0C08C06C80B12D63 /* BeerCardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BeerCardView.swift; sourceTree = "<group>"; };
+		BF88FB134261F7D37172A591 /* BlogView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BlogView.swift; sourceTree = "<group>"; };
 		CB5D68B7ECB1158C7BAA9F34 /* DatabaseManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DatabaseManager.swift; sourceTree = "<group>"; };
 		DEA40732AF753B939D3ED879 /* Beer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Beer.swift; sourceTree = "<group>"; };
 		ED10D1E0A4B8482DF8889137 /* OIDCWebView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OIDCWebView.swift; sourceTree = "<group>"; };
@@ -127,6 +129,7 @@
 			isa = PBXGroup;
 			children = (
 				4F0C69D8612FF9A19B5EA07A /* Beers */,
+				9267886761AE1DD540125EC3 /* Blog */,
 				C45A8C2B6DEC7201E12FBFF6 /* Breweries */,
 				2E3B5B59DC191E131A044632 /* Login */,
 				CD541D83E2ED8D363EC3506A /* Ratings */,
@@ -174,6 +177,14 @@
 				3C3DB6C9B5C3A61119A6B0BA /* Views */,
 			);
 			path = BrewSync;
+			sourceTree = "<group>";
+		};
+		9267886761AE1DD540125EC3 /* Blog */ = {
+			isa = PBXGroup;
+			children = (
+				BF88FB134261F7D37172A591 /* BlogView.swift */,
+			);
+			path = Blog;
 			sourceTree = "<group>";
 		};
 		C45A8C2B6DEC7201E12FBFF6 /* Breweries */ = {
@@ -282,6 +293,7 @@
 				3B03E0BF8445422FED6A2E80 /* BeerFormView.swift in Sources */,
 				FEC2F6669211A0F0FA8C65AC /* BeerListView.swift in Sources */,
 				882281BC1DFE94CA89A8F6B6 /* BeerListViewModel.swift in Sources */,
+				DBE63132F7DD8DF2D8378A26 /* BlogView.swift in Sources */,
 				CDB81D090149A067780418AD /* BrewSyncApp.swift in Sources */,
 				B72EADB12CFA3E5D11779AAA /* Brewery.swift in Sources */,
 				1009A5557324821EB13C5822 /* BreweryFormView.swift in Sources */,
