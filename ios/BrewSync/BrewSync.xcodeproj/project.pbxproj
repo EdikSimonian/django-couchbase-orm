@@ -13,6 +13,7 @@
 		1009A5557324821EB13C5822 /* BreweryFormView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 80861759824B7D6F1C754448 /* BreweryFormView.swift */; };
 		15018CB945DBAD98D0F7F9C1 /* Rating.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0739835DDE25157759464C77 /* Rating.swift */; };
 		1C28B1B09BB9FBB0ED20AE18 /* BeerDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 19489D057AE29B6D1BB3FC8B /* BeerDetailView.swift */; };
+		1C6A08DAFBBB42C441CB9568 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = C62F8B410FFEA0ED5EA7B475 /* Assets.xcassets */; };
 		1CA990F7EEAF1556DA7D65C6 /* KeychainHelper.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4AFE68393A0BC5A898E29A8E /* KeychainHelper.swift */; };
 		3B03E0BF8445422FED6A2E80 /* BeerFormView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 50531C7B5317752202671FD1 /* BeerFormView.swift */; };
 		40F96FA128DF9E59AA92A1AF /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1DF82EE44E0A99773B284BA7 /* Theme.swift */; };
@@ -57,6 +58,7 @@
 		A3F7FB9738584CEE7B0D3606 /* RatingStarsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RatingStarsView.swift; sourceTree = "<group>"; };
 		B089C3CB0C08C06C80B12D63 /* BeerCardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BeerCardView.swift; sourceTree = "<group>"; };
 		BF88FB134261F7D37172A591 /* BlogView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BlogView.swift; sourceTree = "<group>"; };
+		C62F8B410FFEA0ED5EA7B475 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		CB5D68B7ECB1158C7BAA9F34 /* DatabaseManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DatabaseManager.swift; sourceTree = "<group>"; };
 		DEA40732AF753B939D3ED879 /* Beer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Beer.swift; sourceTree = "<group>"; };
 		ED10D1E0A4B8482DF8889137 /* OIDCWebView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OIDCWebView.swift; sourceTree = "<group>"; };
@@ -164,6 +166,7 @@
 		8396E147FEA4D05269E517FE /* Resources */ = {
 			isa = PBXGroup;
 			children = (
+				C62F8B410FFEA0ED5EA7B475 /* Assets.xcassets */,
 			);
 			path = Resources;
 			sourceTree = "<group>";
@@ -236,6 +239,7 @@
 			buildConfigurationList = F5006F7DBA29E63C96EBCBA5 /* Build configuration list for PBXNativeTarget "BrewSync" */;
 			buildPhases = (
 				A9B4E4F62367DD77CACD6FA6 /* Sources */,
+				F9608D435924B4333A82FD60 /* Resources */,
 				DEEEAD6E475E16801884A71B /* Frameworks */,
 			);
 			buildRules = (
@@ -285,6 +289,17 @@
 			);
 		};
 /* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		F9608D435924B4333A82FD60 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				1C6A08DAFBBB42C441CB9568 /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
 		A9B4E4F62367DD77CACD6FA6 /* Sources */ = {
