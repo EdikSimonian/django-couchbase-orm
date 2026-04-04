@@ -112,6 +112,11 @@ class DeleteAccountView(APIView):
 
     def delete(self, request):
         user = request.user
+        if user.is_superuser or user.groups.filter(name="admin").exists():
+            return Response(
+                {"error": "Admin accounts cannot be deleted from the app."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
         username = user.username
         # Delete user's ratings and recompute affected beers
         from django.db import connection

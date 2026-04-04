@@ -24,9 +24,11 @@ struct UserMenuView: View {
             Button("Sign Out", role: .destructive) {
                 auth.logout()
             }
-            Divider()
-            Button("Delete Account", role: .destructive) {
-                showDeleteConfirmation = true
+            if !auth.isAdmin {
+                Divider()
+                Button("Delete Account", role: .destructive) {
+                    showDeleteConfirmation = true
+                }
             }
         } label: {
             Image(systemName: "person.circle")
@@ -37,13 +39,15 @@ struct UserMenuView: View {
             Button("Cancel", role: .cancel) { }
             Button("Delete", role: .destructive) {
                 Task {
+                    ReplicatorManager.shared.stop()
                     do {
-                        ReplicatorManager.shared.stop()
-                        DatabaseManager.shared.deleteAndReset()
                         try await auth.deleteAccount()
                     } catch {
-                        auth.error = error.localizedDescription
+                        // Even if server delete fails, log out locally
+                        print("[Auth] Delete account error: \(error)")
+                        auth.logout()
                     }
+                    DatabaseManager.shared.deleteAndReset()
                 }
             }
         } message: {
