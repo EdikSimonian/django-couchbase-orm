@@ -1,15 +1,53 @@
 import SwiftUI
 import CouchbaseLiteSwift
 
-struct BreweryListView: View {
-    @State private var breweries: [Brewery] = []
+@MainActor
+class BreweryListViewModel: ObservableObject {
+    @Published var breweries: [Brewery] = []
     private var queryToken: ListenerToken?
+
+    func startObserving() {
+        guard queryToken == nil,
+              let collection = DatabaseManager.shared.breweryCollection else { return }
+
+        let query = QueryBuilder
+            .select(SelectResult.all(), SelectResult.expression(Meta.id))
+            .from(DataSource.collection(collection))
+            .orderBy(Ordering.property("name").ascending())
+
+        queryToken = query.addChangeListener { [weak self] change in
+            guard let results = change.results else { return }
+            let list = results.compactMap { result -> Brewery? in
+                guard let dict = result.dictionary(at: 0) else { return nil }
+                let docId = result.string(at: 1) ?? ""
+                return Brewery(
+                    id: Int(docId) ?? 0,
+                    name: dict.string(forKey: "name") ?? "",
+                    city: dict.string(forKey: "city") ?? "",
+                    state: dict.string(forKey: "state") ?? "",
+                    country: dict.string(forKey: "country") ?? "",
+                    description: dict.string(forKey: "description") ?? "",
+                    website: dict.string(forKey: "website") ?? ""
+                )
+            }
+            DispatchQueue.main.async { self?.breweries = list }
+        }
+    }
+
+    func stopObserving() {
+        queryToken?.remove()
+        queryToken = nil
+    }
+}
+
+struct BreweryListView: View {
+    @StateObject private var viewModel = BreweryListViewModel()
 
     var body: some View {
         ZStack {
             Theme.bg.ignoresSafeArea()
 
-            if breweries.isEmpty {
+            if viewModel.breweries.isEmpty {
                 VStack(spacing: 12) {
                     ProgressView()
                         .tint(Theme.accent)
@@ -20,7 +58,7 @@ struct BreweryListView: View {
             } else {
                 ScrollView {
                     LazyVStack(spacing: 12) {
-                        ForEach(breweries) { brewery in
+                        ForEach(viewModel.breweries) { brewery in
                             VStack(alignment: .leading, spacing: 6) {
                                 Text(brewery.name)
                                     .font(.system(size: 17, weight: .semibold))
@@ -55,33 +93,7 @@ struct BreweryListView: View {
             }
         }
         .navigationTitle("Breweries")
-        .onAppear { startObserving() }
-    }
-
-    private func startObserving() {
-        guard let collection = DatabaseManager.shared.breweryCollection else { return }
-
-        let query = QueryBuilder
-            .select(SelectResult.all(), SelectResult.expression(Meta.id))
-            .from(DataSource.collection(collection))
-            .orderBy(Ordering.property("name").ascending())
-
-        query.addChangeListener { change in
-            guard let results = change.results else { return }
-            let list = results.compactMap { result -> Brewery? in
-                guard let dict = result.dictionary(at: 0) else { return nil }
-                let docId = result.string(at: 1) ?? ""
-                return Brewery(
-                    id: Int(docId) ?? 0,
-                    name: dict.string(forKey: "name") ?? "",
-                    city: dict.string(forKey: "city") ?? "",
-                    state: dict.string(forKey: "state") ?? "",
-                    country: dict.string(forKey: "country") ?? "",
-                    description: dict.string(forKey: "description") ?? "",
-                    website: dict.string(forKey: "website") ?? ""
-                )
-            }
-            DispatchQueue.main.async { breweries = list }
-        }
+        .onAppear { viewModel.startObserving() }
+        .onDisappear { viewModel.stopObserving() }
     }
 }
