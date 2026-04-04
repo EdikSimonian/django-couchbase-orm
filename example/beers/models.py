@@ -78,6 +78,9 @@ class Beer(models.Model):
         name = self.name or f"Beer #{self.pk}"
         return f"{name} ({self.style})" if self.style else name
 
+    def get_absolute_url(self):
+        return f"/beers/{self.pk}/"
+
     def save(self, **kwargs):
         self.doc_type = "beer"
         super().save(**kwargs)
