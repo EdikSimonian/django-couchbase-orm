@@ -56,7 +56,7 @@ class ReplicatorManager: ObservableObject {
         if let c = DatabaseManager.shared.breweryCollection { collections.append(c) }
         if let c = DatabaseManager.shared.ratingCollection { collections.append(c) }
         if let c = DatabaseManager.shared.blogPageCollection { collections.append(c) }
-        if let c = DatabaseManager.shared.wagtailPageCollection { collections.append(c) }
+        print("[Replicator] Syncing \(collections.count) collections")
 
         var config = ReplicatorConfiguration(target: endpoint)
         config.replicatorType = .pushAndPull
@@ -80,7 +80,14 @@ class ReplicatorManager: ObservableObject {
                     self?.isConnected = true
                     let beers = DatabaseManager.shared.getAllBeers().count
                     let breweries = DatabaseManager.shared.getAllBreweries().count
-                    print("[Replicator] Idle — synced \(change.status.progress.completed) docs | Local: \(beers) beers, \(breweries) breweries")
+                    let blogs = DatabaseManager.shared.getAllBlogPosts().count
+                    // Count wagtailcore_page docs
+                    var pageCount = 0
+                    if let col = DatabaseManager.shared.wagtailPageCollection {
+                        let q = QueryBuilder.select(SelectResult.expression(Meta.id)).from(DataSource.collection(col))
+                        pageCount = (try? q.execute().allResults().count) ?? 0
+                    }
+                    print("[Replicator] Idle — synced \(change.status.progress.completed) docs | Local: \(beers) beers, \(breweries) breweries, \(blogs) blogs, \(pageCount) pages")
                 case .busy:
                     self?.status = .connected
                     self?.isConnected = true

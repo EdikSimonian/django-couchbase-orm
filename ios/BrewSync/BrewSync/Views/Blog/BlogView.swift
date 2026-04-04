@@ -28,6 +28,7 @@ class BlogViewModel: ObservableObject {
 
 struct BlogView: View {
     @StateObject private var viewModel = BlogViewModel()
+    @ObservedObject var auth = AuthManager.shared
     @State private var selectedPost: BlogPost?
 
     var body: some View {
@@ -48,6 +49,20 @@ struct BlogView: View {
                         Text("\(viewModel.posts.count) posts")
                             .font(.caption)
                             .foregroundColor(Theme.textMuted)
+                        Menu {
+                            Text("Signed in as \(auth.username)")
+                            if auth.isAdmin {
+                                Label("Admin", systemImage: "shield.checkered")
+                            }
+                            Divider()
+                            Button("Sign Out", role: .destructive) {
+                                auth.logout()
+                            }
+                        } label: {
+                            Image(systemName: "person.circle")
+                                .font(.title3)
+                                .foregroundColor(Theme.textMuted)
+                        }
                     }
                     .padding(.horizontal)
                     .padding(.vertical, 10)

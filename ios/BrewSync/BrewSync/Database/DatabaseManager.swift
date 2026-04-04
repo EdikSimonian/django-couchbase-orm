@@ -273,10 +273,8 @@ class DatabaseManager {
     // MARK: - Blog
 
     func getAllBlogPosts() -> [BlogPost] {
-        guard let blogCol = blogPageCollection,
-              let pageCol = wagtailPageCollection else { return [] }
+        guard let blogCol = blogPageCollection else { return [] }
 
-        // Get blog page data
         let query = QueryBuilder
             .select(SelectResult.all(), SelectResult.expression(Meta.id))
             .from(DataSource.collection(blogCol))
@@ -289,18 +287,10 @@ class DatabaseManager {
             let pageId = dict.int(forKey: "page_ptr_id")
             guard pageId > 0 else { continue }
 
-            // Look up title from wagtailcore_page
-            var title = ""
-            var slug = ""
-            if let pageDoc = try? pageCol.document(id: String(pageId)) {
-                title = pageDoc.string(forKey: "title") ?? ""
-                slug = pageDoc.string(forKey: "slug") ?? ""
-            }
-
             posts.append(BlogPost(
                 id: pageId,
-                title: title,
-                slug: slug,
+                title: dict.string(forKey: "title") ?? "",
+                slug: dict.string(forKey: "slug") ?? "",
                 date: dict.string(forKey: "date") ?? "",
                 intro: dict.string(forKey: "intro") ?? "",
                 body: dict.string(forKey: "body") ?? ""
