@@ -198,10 +198,26 @@ def _issue_oidc_tokens(user):
         scope=access.scope,
     )
 
-    # Generate signed JWT with claims
+    # Generate signed JWT with claims, including kid header so App Services
+    # can verify against Django's JWKS endpoint
     private_key = oauth2_settings.OIDC_RSA_PRIVATE_KEY
     from django.conf import settings as django_settings
     issuer = django_settings.WAGTAILADMIN_BASE_URL.rstrip("/") + "/o"
+
+    # Compute the kid to match what DOT publishes in JWKS
+    from jwt.algorithms import RSAAlgorithm
+    from cryptography.hazmat.primitives import serialization
+    private_key_obj = serialization.load_pem_private_key(private_key.encode(), password=None)
+    public_key_obj = private_key_obj.public_key()
+    jwk_dict = json.loads(RSAAlgorithm.to_jwk(public_key_obj))
+    # kid is base64url(SHA-256(JWK thumbprint)) — same as DOT computes
+    import base64
+    thumbprint_input = json.dumps(
+        {"e": jwk_dict["e"], "kty": jwk_dict["kty"], "n": jwk_dict["n"]},
+        separators=(",", ":"),
+        sort_keys=True,
+    ).encode()
+    kid = base64.urlsafe_b64encode(hashlib.sha256(thumbprint_input).digest()).rstrip(b"=").decode()
 
     groups = list(user.groups.values_list("name", flat=True))
     claims = {
@@ -214,7 +230,7 @@ def _issue_oidc_tokens(user):
         "email": user.email,
         "groups": groups,
     }
-    id_token_jwt = jwt.encode(claims, private_key, algorithm="RS256")
+    id_token_jwt = jwt.encode(claims, private_key, algorithm="RS256", headers={"kid": kid})
 
     return {
         "access_token": access.token,
