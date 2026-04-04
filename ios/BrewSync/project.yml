@@ -19,6 +19,8 @@ targets:
       - path: BrewSync
         excludes:
           - Info.plist
+    entitlements:
+      path: BrewSync/BrewSync.entitlements
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.brewsync.app
@@ -26,6 +28,7 @@ targets:
         CURRENT_PROJECT_VERSION: 1
         SWIFT_VERSION: "5.9"
         CODE_SIGN_STYLE: Automatic
+        CODE_SIGN_ENTITLEMENTS: BrewSync/BrewSync.entitlements
         GENERATE_INFOPLIST_FILE: true
         INFOPLIST_FILE: BrewSync/Info.plist
         INFOPLIST_KEY_CFBundleDisplayName: BrewSync

@@ -304,6 +304,90 @@ class AuthManager: NSObject, ObservableObject {
         }
     }
 
+    // MARK: - Sign in with Apple
+
+    func loginWithApple(idToken: String, fullName: String?) async {
+        isLoading = true
+        error = nil
+
+        do {
+            let tokens = try await exchangeSocialToken(
+                provider: "apple",
+                idToken: idToken,
+                fullName: fullName
+            )
+            try await finishSocialLogin(tokens: tokens)
+        } catch {
+            self.error = error.localizedDescription
+            print("[Auth] Apple login error: \(error)")
+        }
+
+        isLoading = false
+    }
+
+    // MARK: - Sign in with Google
+
+    func loginWithGoogle(idToken: String) async {
+        isLoading = true
+        error = nil
+
+        do {
+            let tokens = try await exchangeSocialToken(
+                provider: "google",
+                idToken: idToken,
+                fullName: nil
+            )
+            try await finishSocialLogin(tokens: tokens)
+        } catch {
+            self.error = error.localizedDescription
+            print("[Auth] Google login error: \(error)")
+        }
+
+        isLoading = false
+    }
+
+    // MARK: - Social token exchange
+
+    private func exchangeSocialToken(provider: String, idToken: String, fullName: String?) async throws -> FullTokenResponse {
+        let url = URL(string: "\(djangoURL)/api/auth/social/")!
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        var body: [String: Any] = [
+            "provider": provider,
+            "id_token": idToken,
+        ]
+        if let fullName = fullName, !fullName.isEmpty {
+            body["full_name"] = fullName
+        }
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
+            let responseBody = String(data: data, encoding: .utf8) ?? ""
+            print("[Auth] Social token exchange failed: \(responseBody)")
+            throw AuthError.tokenExchangeFailed
+        }
+
+        return try JSONDecoder().decode(FullTokenResponse.self, from: data)
+    }
+
+    private func finishSocialLogin(tokens: FullTokenResponse) async throws {
+        KeychainHelper.save(key: "id_token", value: tokens.idToken)
+        KeychainHelper.save(key: "access_token", value: tokens.accessToken)
+        if let refresh = tokens.refreshToken {
+            KeychainHelper.save(key: "refresh_token", value: refresh)
+        }
+
+        parseIdToken(tokens.idToken)
+
+        let sessionID = try await getAppServicesSession(idToken: tokens.idToken)
+        KeychainHelper.save(key: "sync_session", value: sessionID)
+        isAuthenticated = true
+        print("[Auth] Social login complete, session: \(sessionID.prefix(20))...")
+    }
+
     // MARK: - Logout
 
     func logout() {
@@ -337,7 +421,7 @@ private struct FullTokenResponse: Codable {
     }
 }
 
-enum AuthError: LocalizedError {
+enum AuthError: LocalizedError, Equatable {
     case networkError, cancelled, noCode, tokenExchangeFailed, serverError(String)
 
     var errorDescription: String? {

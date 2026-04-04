@@ -1,8 +1,11 @@
+import AuthenticationServices
 import SwiftUI
 
 struct LoginView: View {
     @ObservedObject var auth = AuthManager.shared
     @State private var showRegister = false
+    @State private var appleCoordinator = AppleSignInCoordinator()
+    @State private var googleHelper = GoogleSignInHelper()
 
     var body: some View {
         ZStack {
@@ -26,6 +29,55 @@ struct LoginView: View {
 
                 Spacer()
 
+                // Social login buttons
+                VStack(spacing: 12) {
+                    // Sign in with Apple
+                    Button {
+                        Task { await signInWithApple() }
+                    } label: {
+                        HStack(spacing: 8) {
+                            Image(systemName: "apple.logo")
+                                .font(.system(size: 18))
+                            Text("Sign in with Apple")
+                                .fontWeight(.semibold)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 14)
+                        .background(Color.white)
+                        .foregroundColor(.black)
+                        .cornerRadius(12)
+                    }
+                    .disabled(auth.isLoading)
+
+                    // Sign in with Google
+                    Button {
+                        Task { await signInWithGoogle() }
+                    } label: {
+                        HStack(spacing: 8) {
+                            // Google "G" using SF Symbol
+                            Text("G")
+                                .font(.system(size: 18, weight: .bold, design: .rounded))
+                                .foregroundColor(Color(red: 0.26, green: 0.52, blue: 0.96))
+                            Text("Sign in with Google")
+                                .fontWeight(.semibold)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 14)
+                        .background(Color.white.opacity(0.95))
+                        .foregroundColor(.black.opacity(0.87))
+                        .cornerRadius(12)
+                    }
+                    .disabled(auth.isLoading)
+                }
+
+                // Divider
+                HStack {
+                    Rectangle().frame(height: 1).foregroundColor(Theme.border)
+                    Text("or").font(.caption).foregroundColor(Theme.textMuted)
+                    Rectangle().frame(height: 1).foregroundColor(Theme.border)
+                }
+
+                // Email sign in
                 Button {
                     Task { await auth.login() }
                 } label: {
@@ -33,7 +85,7 @@ struct LoginView: View {
                         if auth.isLoading {
                             ProgressView().tint(.black)
                         }
-                        Text("Sign In")
+                        Text("Sign In with Email")
                             .fontWeight(.semibold)
                     }
                     .frame(maxWidth: .infinity)
@@ -58,12 +110,34 @@ struct LoginView: View {
                         .padding(.horizontal)
                 }
 
-                Spacer().frame(height: 40)
+                Spacer().frame(height: 24)
             }
             .padding(.horizontal, 32)
         }
         .sheet(isPresented: $showRegister) {
             RegisterView()
+        }
+    }
+
+    private func signInWithApple() async {
+        do {
+            let result = try await appleCoordinator.signIn()
+            await auth.loginWithApple(idToken: result.idToken, fullName: result.fullName)
+        } catch let error as AuthError where error == .cancelled {
+            // User cancelled, ignore
+        } catch {
+            auth.error = error.localizedDescription
+        }
+    }
+
+    private func signInWithGoogle() async {
+        do {
+            let idToken = try await googleHelper.signIn()
+            await auth.loginWithGoogle(idToken: idToken)
+        } catch let error as ASWebAuthenticationSessionError where error.code == .canceledLogin {
+            // User cancelled, ignore
+        } catch {
+            auth.error = error.localizedDescription
         }
     }
 }

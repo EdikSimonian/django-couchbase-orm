@@ -15,6 +15,7 @@
 		1C28B1B09BB9FBB0ED20AE18 /* BeerDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 19489D057AE29B6D1BB3FC8B /* BeerDetailView.swift */; };
 		1C6A08DAFBBB42C441CB9568 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = C62F8B410FFEA0ED5EA7B475 /* Assets.xcassets */; };
 		1CA990F7EEAF1556DA7D65C6 /* KeychainHelper.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4AFE68393A0BC5A898E29A8E /* KeychainHelper.swift */; };
+		305048DC4C08BEDCB1AA81F3 /* AppleSignInCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = F681A25F392C3AB7918198AA /* AppleSignInCoordinator.swift */; };
 		3B03E0BF8445422FED6A2E80 /* BeerFormView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 50531C7B5317752202671FD1 /* BeerFormView.swift */; };
 		40F96FA128DF9E59AA92A1AF /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1DF82EE44E0A99773B284BA7 /* Theme.swift */; };
 		460822947E3F10E8909F2E48 /* OIDCWebView.swift in Sources */ = {isa = PBXBuildFile; fileRef = ED10D1E0A4B8482DF8889137 /* OIDCWebView.swift */; };
@@ -23,6 +24,7 @@
 		63DA00DDAA2A1080F2AFB090 /* BeerDetailViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8667BEF65EF46B90ABB6E525 /* BeerDetailViewModel.swift */; };
 		68839152AC88A7ECE96686D5 /* LoginView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 95C7CDB1AF378DEF5208CA03 /* LoginView.swift */; };
 		8080DC65CE498BC56890A085 /* BeerCardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B089C3CB0C08C06C80B12D63 /* BeerCardView.swift */; };
+		81D2C82214B26F22893C86FD /* GoogleSignInHelper.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6CD7460CA97DC2988BEC3353 /* GoogleSignInHelper.swift */; };
 		882281BC1DFE94CA89A8F6B6 /* BeerListViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9A1DE9B65B6BA31521DBB085 /* BeerListViewModel.swift */; };
 		8EEC84FE7F70174DF1514F4E /* RatingStarsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A3F7FB9738584CEE7B0D3606 /* RatingStarsView.swift */; };
 		AD31AADFCD690486C4CFBD0E /* Beer.swift in Sources */ = {isa = PBXBuildFile; fileRef = DEA40732AF753B939D3ED879 /* Beer.swift */; };
@@ -47,6 +49,7 @@
 		4D703E1E1B42A7AF69B459F4 /* BrewSyncApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrewSyncApp.swift; sourceTree = "<group>"; };
 		50531C7B5317752202671FD1 /* BeerFormView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BeerFormView.swift; sourceTree = "<group>"; };
 		55393B57109B0D07731A676F /* BlogPost.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BlogPost.swift; sourceTree = "<group>"; };
+		6CD7460CA97DC2988BEC3353 /* GoogleSignInHelper.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GoogleSignInHelper.swift; sourceTree = "<group>"; };
 		7F4582592EC95A43BFD0F1B8 /* BreweryListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BreweryListView.swift; sourceTree = "<group>"; };
 		80861759824B7D6F1C754448 /* BreweryFormView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BreweryFormView.swift; sourceTree = "<group>"; };
 		8667BEF65EF46B90ABB6E525 /* BeerDetailViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BeerDetailViewModel.swift; sourceTree = "<group>"; };
@@ -57,6 +60,7 @@
 		9B56E2E51C5644CB4E0F11C7 /* ReplicatorManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReplicatorManager.swift; sourceTree = "<group>"; };
 		A3F7FB9738584CEE7B0D3606 /* RatingStarsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RatingStarsView.swift; sourceTree = "<group>"; };
 		B089C3CB0C08C06C80B12D63 /* BeerCardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BeerCardView.swift; sourceTree = "<group>"; };
+		B1D54797E7A32356F8970E1B /* BrewSync.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = BrewSync.entitlements; sourceTree = "<group>"; };
 		BF88FB134261F7D37172A591 /* BlogView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BlogView.swift; sourceTree = "<group>"; };
 		C62F8B410FFEA0ED5EA7B475 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		CB5D68B7ECB1158C7BAA9F34 /* DatabaseManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DatabaseManager.swift; sourceTree = "<group>"; };
@@ -64,6 +68,7 @@
 		ED10D1E0A4B8482DF8889137 /* OIDCWebView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OIDCWebView.swift; sourceTree = "<group>"; };
 		F20F759664AFC9E85D2C8B10 /* Brewery.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Brewery.swift; sourceTree = "<group>"; };
 		F2E7CA0F95576B4B854125EB /* BeerListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BeerListView.swift; sourceTree = "<group>"; };
+		F681A25F392C3AB7918198AA /* AppleSignInCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppleSignInCoordinator.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -107,7 +112,9 @@
 		1EE20E8A24765BD4D1187A3C /* Auth */ = {
 			isa = PBXGroup;
 			children = (
+				F681A25F392C3AB7918198AA /* AppleSignInCoordinator.swift */,
 				3EF59C608FDC4F680560726E /* AuthManager.swift */,
+				6CD7460CA97DC2988BEC3353 /* GoogleSignInHelper.swift */,
 				4AFE68393A0BC5A898E29A8E /* KeychainHelper.swift */,
 				ED10D1E0A4B8482DF8889137 /* OIDCWebView.swift */,
 				0F422078FCC4888355401EF3 /* PKCE.swift */,
@@ -174,6 +181,7 @@
 		861D09B6EA590DE0290099DD /* BrewSync */ = {
 			isa = PBXGroup;
 			children = (
+				B1D54797E7A32356F8970E1B /* BrewSync.entitlements */,
 				4D703E1E1B42A7AF69B459F4 /* BrewSyncApp.swift */,
 				3B888FFBDAED091B18537358 /* App */,
 				1EE20E8A24765BD4D1187A3C /* Auth */,
@@ -306,6 +314,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				305048DC4C08BEDCB1AA81F3 /* AppleSignInCoordinator.swift in Sources */,
 				06B020AF7AC69896C2DF6D18 /* AuthManager.swift in Sources */,
 				AD31AADFCD690486C4CFBD0E /* Beer.swift in Sources */,
 				8080DC65CE498BC56890A085 /* BeerCardView.swift in Sources */,
@@ -322,6 +331,7 @@
 				F2DE67E89AE2182236CD2B1E /* BreweryListView.swift in Sources */,
 				4F3FA3B005F1BE4F6C7422C4 /* ContentView.swift in Sources */,
 				58EE7DECDE633F5130A4BFC9 /* DatabaseManager.swift in Sources */,
+				81D2C82214B26F22893C86FD /* GoogleSignInHelper.swift in Sources */,
 				1CA990F7EEAF1556DA7D65C6 /* KeychainHelper.swift in Sources */,
 				68839152AC88A7ECE96686D5 /* LoginView.swift in Sources */,
 				460822947E3F10E8909F2E48 /* OIDCWebView.swift in Sources */,
@@ -341,6 +351,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = BrewSync/BrewSync.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
@@ -368,6 +379,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = BrewSync/BrewSync.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;

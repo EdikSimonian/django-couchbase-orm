@@ -1,6 +1,20 @@
+import hashlib
+import hmac
+import json
+import os
+import time
+
+import jwt
+import requests
+from django.contrib.auth.models import User
 from django.db.models import Avg, Count
 from django.shortcuts import render
-from rest_framework import permissions, status, viewsets
+from django.utils.decorators import method_decorator
+from django.views.decorators.csrf import csrf_exempt
+from oauth2_provider.models import AccessToken, Application, RefreshToken
+from oauth2_provider.settings import oauth2_settings
+from oauthlib.common import generate_token
+from rest_framework import permissions, serializers as drf_serializers, status, viewsets
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -120,3 +134,191 @@ def beer_detail_view(request, pk):
         for row in cursor.fetchall()
     ]
     return render(request, "beers/beer_detail.html", {"beer": beer, "ratings": ratings})
+
+
+# --- Social Login Token Exchange ---
+
+def _get_or_create_social_user(provider, social_id, email, full_name):
+    """Find or create a Django user from a social login."""
+    # Try to find existing user by email first
+    user = None
+    if email:
+        user = User.objects.filter(email=email).first()
+    if not user:
+        # Create username from social ID
+        username = f"{provider}_{social_id[:20]}"
+        if User.objects.filter(username=username).exists():
+            user = User.objects.get(username=username)
+        else:
+            user = User.objects.create_user(
+                username=username,
+                email=email or "",
+                password=None,  # No password — social-only account
+            )
+            if full_name:
+                parts = full_name.split(" ", 1)
+                user.first_name = parts[0]
+                if len(parts) > 1:
+                    user.last_name = parts[1]
+                user.save(update_fields=["first_name", "last_name"])
+    return user
+
+
+def _issue_oidc_tokens(user):
+    """Issue OAuth2/OIDC tokens for the given user (same as DOT would)."""
+    app = Application.objects.filter(client_id="brewsync-ios").first()
+    if not app:
+        raise ValueError("OAuth application 'brewsync-ios' not found")
+
+    expires = time.time() + oauth2_settings.ACCESS_TOKEN_EXPIRE_SECONDS
+    from django.utils import timezone
+    import datetime
+
+    access = AccessToken.objects.create(
+        user=user,
+        application=app,
+        token=generate_token(),
+        expires=datetime.datetime.fromtimestamp(expires),
+        scope="openid profile email",
+    )
+    refresh = RefreshToken.objects.create(
+        user=user,
+        application=app,
+        token=generate_token(),
+        access_token=access,
+    )
+
+    # Build ID token JWT
+    from oauth2_provider.models import get_id_token_model
+    IDToken = get_id_token_model()
+    id_token_obj = IDToken.objects.create(
+        user=user,
+        application=app,
+        expires=access.expires,
+        scope=access.scope,
+    )
+
+    # Generate signed JWT with claims
+    private_key = oauth2_settings.OIDC_RSA_PRIVATE_KEY
+    from django.conf import settings as django_settings
+    issuer = django_settings.WAGTAILADMIN_BASE_URL.rstrip("/") + "/o"
+
+    groups = list(user.groups.values_list("name", flat=True))
+    claims = {
+        "iss": issuer,
+        "sub": user.username,
+        "aud": app.client_id,
+        "exp": int(expires),
+        "iat": int(time.time()),
+        "preferred_username": user.username,
+        "email": user.email,
+        "groups": groups,
+    }
+    id_token_jwt = jwt.encode(claims, private_key, algorithm="RS256")
+
+    return {
+        "access_token": access.token,
+        "id_token": id_token_jwt,
+        "refresh_token": refresh.token,
+        "token_type": "Bearer",
+        "expires_in": oauth2_settings.ACCESS_TOKEN_EXPIRE_SECONDS,
+        "scope": "openid profile email",
+    }
+
+
+@method_decorator(csrf_exempt, name="dispatch")
+class SocialTokenExchangeView(APIView):
+    """Exchange a native Apple/Google social token for Django OIDC tokens.
+
+    POST /api/auth/social/
+    {
+        "provider": "apple" | "google",
+        "id_token": "<JWT from Apple/Google>",
+        "authorization_code": "<optional, Apple first-time>",
+        "full_name": "<optional, Apple first-time>"
+    }
+    """
+    permission_classes = [permissions.AllowAny]
+    authentication_classes = []  # No auth needed — the social token IS the auth
+
+    def post(self, request):
+        provider = request.data.get("provider")
+        id_token = request.data.get("id_token")
+
+        if not provider or not id_token:
+            return Response(
+                {"error": "provider and id_token are required"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            if provider == "apple":
+                social_id, email = self._verify_apple(id_token)
+                full_name = request.data.get("full_name", "")
+            elif provider == "google":
+                social_id, email = self._verify_google(id_token)
+                full_name = request.data.get("full_name", "")
+            else:
+                return Response(
+                    {"error": "provider must be 'apple' or 'google'"},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            user = _get_or_create_social_user(provider, social_id, email, full_name)
+            tokens = _issue_oidc_tokens(user)
+            return Response(tokens)
+
+        except Exception as e:
+            return Response(
+                {"error": str(e)},
+                status=status.HTTP_401_UNAUTHORIZED,
+            )
+
+    def _verify_apple(self, id_token_str):
+        """Verify Apple ID token using Apple's public keys."""
+        # Fetch Apple's public keys
+        apple_keys_url = "https://appleid.apple.com/auth/keys"
+        resp = requests.get(apple_keys_url, timeout=10)
+        resp.raise_for_status()
+        apple_keys = resp.json()
+
+        # Decode header to find the key ID
+        header = jwt.get_unverified_header(id_token_str)
+        kid = header.get("kid")
+
+        # Find matching key
+        key_data = None
+        for key in apple_keys["keys"]:
+            if key["kid"] == kid:
+                key_data = key
+                break
+        if not key_data:
+            raise ValueError("Apple public key not found")
+
+        public_key = jwt.algorithms.RSAAlgorithm.from_jwk(key_data)
+        claims = jwt.decode(
+            id_token_str,
+            public_key,
+            algorithms=["RS256"],
+            audience=os.environ.get("APPLE_CLIENT_ID", "com.brewsync.auth"),
+            issuer="https://appleid.apple.com",
+        )
+
+        return claims["sub"], claims.get("email", "")
+
+    def _verify_google(self, id_token_str):
+        """Verify Google ID token using Google's tokeninfo endpoint."""
+        resp = requests.get(
+            "https://oauth2.googleapis.com/tokeninfo",
+            params={"id_token": id_token_str},
+            timeout=10,
+        )
+        if resp.status_code != 200:
+            raise ValueError("Invalid Google ID token")
+
+        claims = resp.json()
+        expected_client_id = os.environ.get("GOOGLE_IOS_CLIENT_ID", "")
+        if expected_client_id and claims.get("aud") != expected_client_id:
+            raise ValueError("Google token audience mismatch")
+
+        return claims["sub"], claims.get("email", "")
