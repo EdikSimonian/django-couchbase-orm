@@ -39,6 +39,9 @@ class BlogPage(Page):
     date = models.DateField("Post date", null=True, blank=True)
     intro = models.CharField(max_length=250, blank=True, default="")
     body = RichTextField(blank=True)
+    # Denormalized from Page for mobile sync (so home_blogpage doc has title)
+    blog_title = models.CharField(max_length=255, blank=True, default="", editable=False)
+    blog_slug = models.CharField(max_length=255, blank=True, default="", editable=False)
 
     content_panels = Page.content_panels + [
         FieldPanel("date"),
@@ -47,3 +50,8 @@ class BlogPage(Page):
     ]
 
     parent_page_types = ["home.BlogIndexPage"]
+
+    def save(self, **kwargs):
+        self.blog_title = self.title
+        self.blog_slug = self.slug
+        super().save(**kwargs)

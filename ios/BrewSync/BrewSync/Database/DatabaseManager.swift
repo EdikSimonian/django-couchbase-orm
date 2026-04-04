@@ -289,8 +289,8 @@ class DatabaseManager {
 
             posts.append(BlogPost(
                 id: pageId,
-                title: dict.string(forKey: "title") ?? "",
-                slug: dict.string(forKey: "slug") ?? "",
+                title: dict.string(forKey: "blog_title") ?? dict.string(forKey: "title") ?? "",
+                slug: dict.string(forKey: "blog_slug") ?? dict.string(forKey: "slug") ?? "",
                 date: dict.string(forKey: "date") ?? "",
                 intro: dict.string(forKey: "intro") ?? "",
                 body: dict.string(forKey: "body") ?? ""

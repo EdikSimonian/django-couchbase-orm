@@ -21,7 +21,7 @@ class BlogViewModel: ObservableObject {
         let query = QueryBuilder
             .select(
                 SelectResult.expression(Meta.id),
-                SelectResult.property("title"),
+                SelectResult.property("blog_title"),
                 SelectResult.property("date"),
                 SelectResult.property("intro"),
                 SelectResult.property("page_ptr_id")
