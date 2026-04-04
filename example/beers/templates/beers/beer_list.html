@@ -48,7 +48,7 @@
             {% if beer.abv %}<span class="badge badge-accent">{{ beer.abv }}%</span>{% endif %}
         </div>
         <div style="font-size:13px; color:var(--accent); margin-bottom:4px;">{{ beer.style }}</div>
-        <div style="font-size:13px; color:var(--text-muted);">{{ beer._brewery_name|default:"—" }}</div>
+        <div style="font-size:13px; color:var(--text-muted);">{{ beer.brewery_display|default:"—" }}</div>
         {% if beer.description %}<div style="font-size:13px; color:var(--text-muted); line-height:1.4; margin-top:8px; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden;">{{ beer.description }}</div>{% endif %}
         <div style="display:flex; justify-content:space-between; align-items:center; margin-top:12px; padding-top:12px; border-top:1px solid var(--border);">
             <div class="stars">

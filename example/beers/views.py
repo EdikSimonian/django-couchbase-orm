@@ -195,7 +195,7 @@ def beer_list_view(request):
             Brewery.objects.filter(pk__in=brewery_ids).values_list("pk", "name")
         )
     for b in beers:
-        b._brewery_name = brewery_names.get(b.brewery_id, "")
+        b.brewery_display = brewery_names.get(b.brewery_id, "")
 
     return render(request, "beers/beer_list.html", {
         "beers": beers,
