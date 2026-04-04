@@ -136,19 +136,25 @@ class DeleteAccountView(APIView):
 
 # --- Template views ---
 
+_top_styles_cache = {"styles": None, "ts": 0}
+
 def beer_list_view(request):
     from django.core.paginator import Paginator
     from django.db import connection
 
-    # Get top 10 styles by beer count via raw N1QL
-    cursor = connection.cursor()
-    cursor.execute(
-        'SELECT style, COUNT(*) AS cnt '
-        'FROM `beer-sample`.`_default`.`beers_beer` '
-        'WHERE doc_type = "beer" AND style IS VALUED AND style != "" '
-        'GROUP BY style ORDER BY cnt DESC LIMIT 10'
-    )
-    top_styles = [row[0] for row in cursor.fetchall()]
+    # Cache top 10 styles for 5 minutes
+    now = time.time()
+    if _top_styles_cache["styles"] is None or now - _top_styles_cache["ts"] > 300:
+        cursor = connection.cursor()
+        cursor.execute(
+            'SELECT style, COUNT(*) AS cnt '
+            'FROM `beer-sample`.`_default`.`beers_beer` '
+            'WHERE doc_type = "beer" AND style IS VALUED AND style != "" '
+            'GROUP BY style ORDER BY cnt DESC LIMIT 10'
+        )
+        _top_styles_cache["styles"] = [row[0] for row in cursor.fetchall()]
+        _top_styles_cache["ts"] = now
+    top_styles = _top_styles_cache["styles"]
 
     # Filter and search
     qs = Beer.objects.select_related("brewery").all()
