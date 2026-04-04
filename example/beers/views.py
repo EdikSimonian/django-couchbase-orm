@@ -107,4 +107,5 @@ def beer_list_view(request):
 
 def beer_detail_view(request, pk):
     beer = Beer.objects.select_related("brewery").get(pk=pk)
-    return render(request, "beers/beer_detail.html", {"beer": beer})
+    ratings = Rating.objects.filter(beer=beer).order_by("-created_at")
+    return render(request, "beers/beer_detail.html", {"beer": beer, "ratings": ratings})
