@@ -386,9 +386,9 @@ class SocialTokenExchangeView(APIView):
             tokens = _issue_oidc_tokens(user)
             return Response(tokens)
 
-        except ValueError as e:
+        except ValueError:
             return Response(
-                {"error": str(e)},
+                {"error": "Invalid credentials"},
                 status=status.HTTP_401_UNAUTHORIZED,
             )
         except Exception:
