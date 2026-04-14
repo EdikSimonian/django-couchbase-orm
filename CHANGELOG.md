@@ -16,6 +16,8 @@
 
 - **N1QL query_context** — All queries now set `query_context` to the default bucket/scope, so unqualified collection names in raw SQL or migrations resolve correctly server-side.
 
+- **ACID transaction support** — `transaction.atomic()` now uses real Couchbase ACID transactions via N1QL `BEGIN WORK` / `COMMIT WORK` / `ROLLBACK WORK` with `txid` parameter tracking. All DML types (INSERT, UPDATE, DELETE, SELECT) work inside transactions. New `DURABILITY_LEVEL` option in `DATABASES.OPTIONS` — defaults to `"none"` (works on single-node dev clusters), set to `"majority"` for production multi-node clusters with replicas. Graceful error handling with actionable messages when durability is misconfigured. `supports_transactions=True` and `atomic_transactions=True` feature flags enabled.
+
 ### Bug Fixes
 
 - **Fixed introspection query params** — `get_constraints()` was passing query parameters as positional args to `cluster.query()` instead of via `QueryOptions`. Parameters were being silently ignored, returning unfiltered results.
@@ -32,8 +34,8 @@
 
 ### Stats
 
-- 1,233 tests pass against real Couchbase (0 failures, 4 skipped, ~4 minutes)
-- Python 3.10, 3.11, 3.12, 3.13 supported
+- 1,240 tests pass against real Couchbase (0 failures, 0 skipped, ~4 minutes)
+- Python 3.10, 3.11, 3.12, 3.13, 3.14 supported
 
 ---
 

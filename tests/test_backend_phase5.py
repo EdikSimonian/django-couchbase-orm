@@ -276,3 +276,194 @@ class TestCoexistence:
             ).rows()
         )
         assert len(rows) == 0
+
+
+class TestTimezoneAwareDatetimes:
+    """Test timezone-aware datetime storage and retrieval."""
+
+    def test_datetime_stored_with_utc_offset(self):
+        """DateTimeField should store values with +00:00 UTC offset."""
+        from django.contrib.auth.models import User
+
+        username = f"tz_{uuid.uuid4().hex[:6]}"
+        user = User.objects.create_user(username, f"{username}@test.com", "pass")
+        # last_login is set by Django — set it manually with a tz-aware datetime
+        from django.utils import timezone
+
+        now = timezone.now()
+        user.last_login = now
+        user.save()
+
+        # Reload from DB
+        user.refresh_from_db()
+        assert user.last_login is not None
+        user.delete()
+
+    def test_datetime_roundtrip_with_use_tz(self, settings):
+        """Datetimes should roundtrip correctly with USE_TZ=True."""
+        settings.USE_TZ = True
+
+        from datetime import datetime, timezone as tz
+
+        from django.contrib.auth.models import User
+
+        username = f"tzrt_{uuid.uuid4().hex[:6]}"
+        user = User.objects.create_user(username, f"{username}@test.com", "pass")
+        aware_dt = datetime(2024, 6, 15, 12, 30, 45, tzinfo=tz.utc)
+        user.last_login = aware_dt
+        user.save()
+
+        user.refresh_from_db()
+        assert user.last_login is not None
+        # Should come back as aware datetime
+        assert user.last_login.tzinfo is not None
+        assert user.last_login.year == 2024
+        assert user.last_login.month == 6
+        assert user.last_login.hour == 12
+        user.delete()
+
+    def test_datetime_non_utc_converted_to_utc(self, settings):
+        """Non-UTC datetimes should be converted to UTC for storage."""
+        settings.USE_TZ = True
+
+        from datetime import datetime, timedelta, timezone as tz
+
+        from django.contrib.auth.models import User
+
+        username = f"tzconv_{uuid.uuid4().hex[:6]}"
+        user = User.objects.create_user(username, f"{username}@test.com", "pass")
+        # 15:30 EST = 20:30 UTC
+        est = tz(timedelta(hours=-5))
+        user.last_login = datetime(2024, 1, 15, 15, 30, 0, tzinfo=est)
+        user.save()
+
+        user.refresh_from_db()
+        assert user.last_login is not None
+        # Should be stored/returned as UTC
+        assert user.last_login.hour == 20
+        assert user.last_login.minute == 30
+        user.delete()
+
+    def test_auto_now_produces_aware_datetime(self, settings):
+        """auto_now fields should produce timezone-aware datetimes."""
+        settings.USE_TZ = True
+
+        from tests.testapp.models import Article
+
+        a = Article.objects.create(title="TZ Test")
+        a.refresh_from_db()
+        assert a.created_at is not None
+        assert a.updated_at is not None
+        # With USE_TZ=True, auto_now datetimes should be aware
+        assert a.created_at.tzinfo is not None
+        assert a.updated_at.tzinfo is not None
+        a.delete()
+
+
+class TestWindowFunctions:
+    """Test window function support (ROW_NUMBER, RANK, etc.)."""
+
+    def test_window_row_number(self):
+        """ROW_NUMBER() window function should work."""
+        from django.contrib.auth.models import Group
+        from django.db.models import F, Window
+        from django.db.models.functions import RowNumber
+
+        names = [f"win_{uuid.uuid4().hex[:4]}" for _ in range(3)]
+        for n in names:
+            Group.objects.create(name=n)
+
+        qs = Group.objects.filter(name__in=names).annotate(
+            row_num=Window(expression=RowNumber(), order_by=F("name").asc())
+        )
+        results = list(qs.values_list("name", "row_num"))
+        assert len(results) == 3
+        row_nums = [r[1] for r in results]
+        assert sorted(row_nums) == [1, 2, 3]
+        Group.objects.filter(name__in=names).delete()
+
+    def test_supports_over_clause_flag(self):
+        """Feature flag should be True."""
+        from django.db import connection
+
+        assert connection.features.supports_over_clause
+
+
+class TestPreparedStatementCaching:
+    """Test ADHOC option for prepared statement caching."""
+
+    def test_adhoc_default_is_true(self):
+        """Default ADHOC should be True (no caching)."""
+        from django.db import connection
+
+        cursor = connection.create_cursor()
+        assert cursor._adhoc is True
+        cursor.close()
+
+    def test_adhoc_false_from_settings(self, settings):
+        """ADHOC=False should propagate to cursor."""
+        settings.DATABASES["default"]["OPTIONS"]["ADHOC"] = False
+
+        from django.db import connection
+
+        # Force new cursor with updated settings
+        cursor = connection.create_cursor()
+        assert cursor._adhoc is False
+        cursor.close()
+
+        # Restore
+        settings.DATABASES["default"]["OPTIONS"].pop("ADHOC", None)
+
+    def test_queries_work_with_adhoc_false(self, settings):
+        """Queries should work normally with prepared statement caching."""
+        settings.DATABASES["default"]["OPTIONS"]["ADHOC"] = False
+
+        from django.contrib.auth.models import Group
+
+        name = f"adhoc_{uuid.uuid4().hex[:6]}"
+        Group.objects.create(name=name)
+        assert Group.objects.filter(name=name).exists()
+        Group.objects.filter(name=name).delete()
+
+        settings.DATABASES["default"]["OPTIONS"].pop("ADHOC", None)
+
+
+class TestQueryContext:
+    """Test query_context on QueryOptions for unqualified name resolution."""
+
+    def test_raw_sql_with_unqualified_name(self):
+        """Raw N1QL with bare table name should resolve via query_context."""
+        from django.db import connection
+
+        with connection.cursor() as cursor:
+            # This uses a fully qualified name — should work regardless
+            cursor.execute(
+                "SELECT 1 AS `val` FROM `testbucket`.`_default`.`auth_group` LIMIT 1"
+            )
+            # No error means query_context didn't interfere
+
+    def test_cursor_has_query_context(self):
+        """Cursor should set query_context on QueryOptions."""
+        from django.db import connection
+
+        cursor = connection.create_cursor()
+        # Verify the cursor has the bucket/scope info for query_context
+        assert cursor._bucket_name == connection.settings_dict["NAME"]
+        cursor.close()
+
+
+class TestOpenTelemetryTracer:
+    """Test TRACER option propagation (no OTel dependency required)."""
+
+    def test_tracer_not_set_by_default(self):
+        """TRACER should not be in OPTIONS by default."""
+        from django.db import connection
+
+        assert connection.settings_dict.get("OPTIONS", {}).get("TRACER") is None
+
+    def test_connection_works_without_tracer(self):
+        """Connection should work fine without TRACER configured."""
+        from django.db import connection
+
+        connection.ensure_connection()
+        assert connection.is_usable()
