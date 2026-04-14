@@ -529,7 +529,15 @@ class CouchbaseCursor:
     parameters and executes queries via cluster.query().
     """
 
-    def __init__(self, cluster, bucket_name, scope_name="_default", scan_consistency="request_plus", adhoc=True, wrapper=None):
+    def __init__(
+        self,
+        cluster,
+        bucket_name,
+        scope_name="_default",
+        scan_consistency="request_plus",
+        adhoc=True,
+        wrapper=None,
+    ):
         self._cluster = cluster
         self._bucket_name = bucket_name
         self._scope_name = scope_name

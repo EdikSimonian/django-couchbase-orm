@@ -234,9 +234,7 @@ class SQLInsertCompiler(CouchbaseCompilerMixin, base_compiler.SQLInsertCompiler)
                         from django.db import IntegrityError
 
                         cols = ", ".join(violated_fields)
-                        raise IntegrityError(
-                            f"UNIQUE constraint failed: {opts.db_table} ({cols})"
-                        )
+                        raise IntegrityError(f"UNIQUE constraint failed: {opts.db_table} ({cols})")
                 else:
                     doc_id = self._generate_pk(opts.db_table)
 
