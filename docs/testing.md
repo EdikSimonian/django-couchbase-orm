@@ -1,22 +1,25 @@
 # Testing Guide
 
-The project has **1,258 tests** covering the full stack: Document API, Django database backend, Wagtail integration, concurrency, and edge cases. All tests run against a real Dockerized Couchbase instance.
+The project has **1,233+ tests** covering the full stack: Document API, Django database backend, Wagtail integration, concurrency, and edge cases. All tests run against a real Dockerized Couchbase instance.
 
 ## Quick Start
 
 ```bash
-# 1. Start Couchbase
+# Option 1: Full auto-setup (start Docker + configure + run migrations)
+./scripts/setup-test-couchbase.sh --start
+
+# Option 2: Manual steps
 docker compose -f docker-compose.test.yml up -d
 ./scripts/setup-test-couchbase.sh
 
-# 2. Install dependencies
+# Install dependencies
 pip install -e ".[dev]" pytest-django pytest-asyncio wagtail
 
-# 3. Run Django migrations
-CB_BUCKET=testbucket python -m django migrate --run-syncdb
+# Run all tests
+pytest tests/ --ignore=tests/testapp --ignore=tests/wagtailapp
 
-# 4. Run all tests
-CB_BUCKET=testbucket pytest tests/ --ignore=tests/testapp --ignore=tests/wagtailapp
+# Or: setup + test in one command
+./scripts/setup-test-couchbase.sh --full
 ```
 
 ## Prerequisites
@@ -244,7 +247,7 @@ Environment variables for Couchbase connection:
 | `CB_CONNECTION_STRING` | `couchbase://localhost` | Cluster connection string |
 | `CB_USERNAME` | `Administrator` | Couchbase username |
 | `CB_PASSWORD` | `password` | Couchbase password |
-| `CB_BUCKET` | `test_bucket` | Bucket name |
+| `CB_BUCKET` | `testbucket` | Bucket name |
 | `CB_SCOPE` | `_default` | Scope name |
 
 ## Writing New Tests

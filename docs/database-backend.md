@@ -15,6 +15,9 @@ DATABASES = {
         "HOST": "couchbase://localhost", # Connection string
         "OPTIONS": {
             "SCOPE": "_default",       # Couchbase scope (optional)
+            "SCAN_CONSISTENCY": "request_plus",  # or "not_bounded" for speed
+            "ADHOC": True,             # False = prepared statement caching
+            # "TRACER": otel_tracer,   # OpenTelemetry TracerProvider (SDK 4.6+)
         },
     }
 }
@@ -119,7 +122,7 @@ All standard Django field types work:
 | `DecimalField` | number | Stored as float |
 | `BooleanField` | boolean | |
 | `DateField` | string | ISO 8601 format |
-| `DateTimeField` | string | ISO 8601 format, auto_now/auto_now_add work |
+| `DateTimeField` | string | ISO 8601 with UTC offset (+00:00), timezone-aware when USE_TZ=True |
 | `TimeField` | string | ISO 8601 format |
 | `UUIDField` | string | |
 | `JSONField` | native JSON | Couchbase is JSON-native |
@@ -331,16 +334,71 @@ The `ContentType` framework works, enabling generic relations and Django admin h
 
 See [Wagtail Integration](wagtail.md) for details on running Wagtail with Couchbase.
 
+## Unique Constraints
+
+Fields with `unique=True` are enforced at the application level. The ORM:
+1. Creates a N1QL index on the unique field(s)
+2. Checks for existing documents with the same value before INSERT
+3. Raises `django.db.IntegrityError` on duplicate values
+4. Respects `bulk_create(ignore_conflicts=True)` to skip duplicates silently
+
+```python
+class Tag(models.Model):
+    name = models.CharField(max_length=50, unique=True)
+
+# This raises IntegrityError:
+Tag.objects.create(name="python")
+Tag.objects.create(name="python")  # IntegrityError!
+
+# This silently skips:
+Tag.objects.bulk_create([Tag(name="python")], ignore_conflicts=True)
+```
+
+`unique_together` and `UniqueConstraint` in `Meta.constraints` are also enforced.
+
+## Prepared Statement Caching
+
+Set `ADHOC: False` to enable server-side query plan caching. The Couchbase query service caches execution plans for repeated queries (up to 16,384 plans per node), reducing parse overhead on high-traffic endpoints.
+
+```python
+DATABASES = {
+    "default": {
+        "OPTIONS": {
+            "ADHOC": False,  # Enable prepared statement caching
+        },
+    }
+}
+```
+
+## OpenTelemetry Tracing
+
+Pass an OpenTelemetry `TracerProvider` via `OPTIONS.TRACER` to get zero-code query-level tracing for every SDK operation (KV, N1QL, transactions).
+
+```python
+from opentelemetry.sdk.trace import TracerProvider
+
+DATABASES = {
+    "default": {
+        "OPTIONS": {
+            "TRACER": TracerProvider(),
+        },
+    }
+}
+```
+
+Requires Couchbase Python SDK 4.6+.
+
 ## Limitations
 
 | Feature | Status | Notes |
 |---------|--------|-------|
-| Transactions | No-op | Couchbase ACID needs multi-node cluster |
+| Transactions | No-op | Couchbase ACID planned for future release |
 | Savepoints | Not supported | |
-| Window functions (OVER) | Not supported | N1QL limitation |
+| Window functions (OVER) | Supported | ROW_NUMBER, RANK, LEAD, LAG, etc. (Server 6.5+) |
+| Timezone-aware datetimes | Supported | Stored as UTC with +00:00 offset when USE_TZ=True |
 | Multi-table inheritance | Works | Performance may vary with JOINs |
 | Raw SQL | Use N1QL syntax | Not PostgreSQL/MySQL SQL |
-| Database-level UNIQUE | Via N1QL index | Not enforced like SQL constraints |
+| Unique constraints | Application-level | Enforced via check-before-insert + IntegrityError |
 | Correlated subquery + GROUP BY | Graceful empty | N1QL is stricter than SQL |
 
 ## Architecture

@@ -1,5 +1,42 @@
 # Changelog
 
+## 1.2.0 (2026-04-13)
+
+### New Features
+
+- **Timezone-aware datetimes** — DateTimeField now stores values with UTC offset (`+00:00`) and returns timezone-aware datetimes when Django's `USE_TZ=True`. Both the ORM backend (`operations.py`) and the Document API (`fields/datetime.py`) are timezone-aware. Naive datetimes are assumed UTC when `USE_TZ=True`, matching Django convention.
+
+- **Unique constraint enforcement** — Fields with `unique=True` now raise `django.db.IntegrityError` on duplicate values instead of silently overwriting. Also checks `unique_together` and `UniqueConstraint` from `Meta.constraints`. Respects `bulk_create(ignore_conflicts=True)` to skip duplicates silently and `bulk_create(update_conflicts=True)` to update existing documents.
+
+- **Window functions** — Enabled `supports_over_clause=True`. N1QL supports window functions (`ROW_NUMBER`, `RANK`, `DENSE_RANK`, `LAG`, `LEAD`, `FIRST_VALUE`, `LAST_VALUE`, etc.) since Couchbase Server 6.5.
+
+- **Prepared statement caching** — New `ADHOC` option in `DATABASES.OPTIONS`. Set to `False` to enable server-side query plan caching via `adhoc=False` on `QueryOptions`. Reduces parse overhead for repeated queries.
+
+- **OpenTelemetry tracing** — New `TRACER` option in `DATABASES.OPTIONS` and `COUCHBASE.OPTIONS`. Pass an OpenTelemetry `TracerProvider` for zero-code query-level tracing on every SDK operation (Couchbase Python SDK 4.6+).
+
+- **N1QL query_context** — All queries now set `query_context` to the default bucket/scope, so unqualified collection names in raw SQL or migrations resolve correctly server-side.
+
+### Bug Fixes
+
+- **Fixed introspection query params** — `get_constraints()` was passing query parameters as positional args to `cluster.query()` instead of via `QueryOptions`. Parameters were being silently ignored, returning unfiltered results.
+
+- **Fixed test bucket name mismatch** — `django_settings.py` defaulted to `test_bucket` but all tests and CI used `testbucket`. Aligned to `testbucket` everywhere.
+
+### Improvements
+
+- **Improved setup script** — `scripts/setup-test-couchbase.sh` now auto-creates Document API test collections + indexes, runs Django migrations, supports `--start` (Docker) and `--full` (Docker + tests) flags, and handles already-initialized clusters.
+
+### SDK Compatibility
+
+- Verified compatible with Couchbase Python SDK 4.6.0 (latest). No breaking changes from SDK 4.1→4.6 affect this ORM. Noted: `CollectionSpec` API is deprecated in SDK 4.6 (warning logged during schema operations).
+
+### Stats
+
+- 1,233 tests pass against real Couchbase (0 failures, 4 skipped, ~4 minutes)
+- Python 3.10, 3.11, 3.12, 3.13 supported
+
+---
+
 ## 1.1.0 (2026-04-09)
 
 ### Critical Bug Fixes
