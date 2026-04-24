@@ -20,6 +20,10 @@ env/
 *.swo
 *~
 
+# Xcode per-user IDE state (cursor position, open tabs, breakpoints)
+*.xcuserstate
+xcuserdata/
+
 # Testing
 .pytest_cache/
 .coverage
@@ -42,7 +46,16 @@ Thumbs.db
 
 # Couchbase
 *.log
+capella.env
+*capella*.env
+secrets/
+
+# Data snapshots
+data-snapshots/
 
 # Wagtail uploaded media
 images/
 original_images/
+
+# Claude session notes
+.claude-session-notes.md
