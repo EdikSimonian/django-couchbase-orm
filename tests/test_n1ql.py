@@ -1,6 +1,5 @@
 """Tests for the N1QL query builder."""
 
-import pytest
 
 from django_couchbase_orm.query.n1ql import N1QLQuery
 
@@ -121,7 +120,11 @@ class TestN1QLBasic:
         q.offset(0)
 
         stmt, params = q.build()
-        assert "SELECT META(d).id AS __id, d.*" in stmt
+        assert "META(d).id AS __id" in stmt
+        # CAS is now hydrated alongside the id so optimistic locking works on
+        # queryset-loaded documents.
+        assert "META(d).cas AS __cas" in stmt
+        assert "d.*" in stmt
         assert "FROM `beer-sample`.`_default`.`_default` AS d" in stmt
         assert "WHERE" in stmt
         assert "d.`type` = $1" in stmt

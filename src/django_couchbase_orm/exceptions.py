@@ -35,3 +35,9 @@ class ConnectionError(DjangoCbError):
 
 class OperationError(DjangoCbError):
     """Raised when a Couchbase operation fails."""
+
+
+class ConcurrentModificationError(OperationError):
+    """Raised when an optimistic-locking save fails because the stored CAS
+    no longer matches the in-memory CAS — another writer modified the
+    document between read and write. Retry by reloading the document."""

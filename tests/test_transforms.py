@@ -193,9 +193,29 @@ class TestApplyLookup:
         """Unknown suffixes are treated as nested field paths with exact lookup."""
         q = self._make_query()
         # 'nonexistent_lookup' is not a registered lookup, so parse_lookup
-        # treats 'name__nonexistent_lookup' as a field path with exact match
+        # treats 'name__nonexistent_lookup' as a nested JSON path.
         clause = apply_lookup(q, "name__nonexistent_lookup", "x")
-        assert "d.`name__nonexistent_lookup` = $1" in clause
+        assert clause == "d.`name`.`nonexistent_lookup` = $1"
+
+    def test_nested_path_exact(self):
+        q = self._make_query()
+        clause = apply_lookup(q, "address__city", "Brooklyn")
+        assert clause == "d.`address`.`city` = $1"
+
+    def test_nested_path_with_lookup(self):
+        q = self._make_query()
+        clause = apply_lookup(q, "address__city__contains", "rook")
+        assert clause == "CONTAINS(d.`address`.`city`, $1)"
+
+    def test_nested_path_three_levels(self):
+        q = self._make_query()
+        clause = apply_lookup(q, "address__zip__primary", "11201")
+        assert clause == "d.`address`.`zip`.`primary` = $1"
+
+    def test_nested_path_rejects_injection(self):
+        q = self._make_query()
+        with pytest.raises(ValueError, match="Invalid identifier"):
+            apply_lookup(q, "address__city`); DROP COLLECTION x;--", "x")
 
     def test_params_accumulate(self):
         """Multiple lookups should accumulate params correctly."""

@@ -138,15 +138,34 @@ class FloatField(BaseField):
 class BooleanField(BaseField):
     """A field that stores boolean values."""
 
-    def to_python(self, value: Any) -> bool | None:
+    _TRUE_STRINGS = frozenset({"true", "t", "yes", "y", "1"})
+    _FALSE_STRINGS = frozenset({"false", "f", "no", "n", "0", ""})
+
+    @classmethod
+    def _coerce(cls, value: Any) -> bool | None:
         if value is None:
             return None
-        return bool(value)
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, (int, float)):
+            # Reject only NaN; otherwise honor 0/non-zero semantics.
+            if isinstance(value, float) and value != value:  # NaN
+                raise ValidationError("BooleanField cannot accept NaN.")
+            return bool(value)
+        if isinstance(value, str):
+            normalized = value.strip().lower()
+            if normalized in cls._TRUE_STRINGS:
+                return True
+            if normalized in cls._FALSE_STRINGS:
+                return False
+            raise ValidationError(f"BooleanField cannot interpret string {value!r} as a boolean.")
+        raise ValidationError(f"BooleanField expected bool/int/str, got {type(value).__name__}.")
+
+    def to_python(self, value: Any) -> bool | None:
+        return self._coerce(value)
 
     def to_json(self, value: Any) -> bool | None:
-        if value is None:
-            return None
-        return bool(value)
+        return self._coerce(value)
 
     def validate(self, value: Any) -> None:
         super().validate(value)

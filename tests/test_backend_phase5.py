@@ -47,7 +47,7 @@ class TestConnectionSharing:
 
     def test_document_api_works_with_backend_settings(self):
         """Document API should work even without explicit COUCHBASE settings."""
-        from django_couchbase_orm.connection import get_cluster, get_bucket
+        from django_couchbase_orm.connection import get_bucket, get_cluster
 
         cluster = get_cluster()
         assert cluster is not None
@@ -68,9 +68,7 @@ class TestConnectionSharing:
         cluster = connection.couchbase_cluster
         result = cluster.query(
             "SELECT d.`name` FROM `testbucket`.`_default`.`auth_group` AS d WHERE d.`id` = $1",
-            QueryOptions(
-                positional_parameters=[g.pk], scan_consistency="request_plus"
-            ),
+            QueryOptions(positional_parameters=[g.pk], scan_consistency="request_plus"),
         )
         rows = list(result.rows())
         assert len(rows) == 1
@@ -95,22 +93,16 @@ class TestSubqueries:
         auth_ct_ids = ContentType.objects.filter(app_label="auth").values("pk")
         non_auth = Permission.objects.exclude(content_type_id__in=auth_ct_ids)
         total = Permission.objects.count()
-        auth_count = Permission.objects.filter(
-            content_type__app_label="auth"
-        ).count()
+        auth_count = Permission.objects.filter(content_type__app_label="auth").count()
         assert non_auth.count() == total - auth_count
 
     def test_filter_with_queryset_in(self):
         from django.contrib.auth.models import Permission
 
         # IN with queryset that returns PKs
-        add_perm_ids = Permission.objects.filter(
-            codename__startswith="add"
-        ).values("pk")
+        add_perm_ids = Permission.objects.filter(codename__startswith="add").values("pk")
         same_perms = Permission.objects.filter(pk__in=add_perm_ids)
-        assert same_perms.count() == Permission.objects.filter(
-            codename__startswith="add"
-        ).count()
+        assert same_perms.count() == Permission.objects.filter(codename__startswith="add").count()
 
 
 class TestBulkOperations:
@@ -154,20 +146,14 @@ class TestComplexQueries:
     def test_chained_filters(self):
         from django.contrib.auth.models import User
 
-        qs = (
-            User.objects.filter(is_active=True)
-            .filter(is_superuser=False)
-            .filter(is_staff=False)
-        )
+        qs = User.objects.filter(is_active=True).filter(is_superuser=False).filter(is_staff=False)
         assert qs.count() >= 0
 
     def test_exclude_complex_q(self):
         from django.contrib.auth.models import Permission
         from django.db.models import Q
 
-        result = Permission.objects.exclude(
-            Q(codename__startswith="add") & Q(content_type__app_label="auth")
-        )
+        result = Permission.objects.exclude(Q(codename__startswith="add") & Q(content_type__app_label="auth"))
         assert result.count() > 0
 
     def test_none_queryset(self):
@@ -188,9 +174,7 @@ class TestComplexQueries:
     def test_distinct(self):
         from django.contrib.auth.models import User
 
-        result = list(
-            User.objects.values_list("is_active", flat=True).distinct()
-        )
+        result = list(User.objects.values_list("is_active", flat=True).distinct())
         assert isinstance(result, list)
 
     def test_only_fields(self):
@@ -219,8 +203,9 @@ class TestComplexQueries:
         assert result["auth_count"] > 0
 
     def test_reverse_fk_filter(self):
-        from tests.testapp.models import Article
         from django.contrib.auth.models import User
+
+        from tests.testapp.models import Article
 
         u = User.objects.create_user(f"rev_{uuid.uuid4().hex[:6]}", "x@x.com", "p")
         Article.objects.create(title="Rev Test", author=u)
@@ -230,8 +215,9 @@ class TestComplexQueries:
         u.delete()
 
     def test_f_expression_comparison(self):
-        from tests.testapp.models import Article
         from django.db.models import F
+
+        from tests.testapp.models import Article
 
         articles = list(Article.objects.filter(views__gte=F("views")))
         assert isinstance(articles, list)
@@ -242,9 +228,9 @@ class TestCoexistence:
 
     def test_both_apis_crud(self):
         """Create via Model API, read via raw N1QL, delete via Model API."""
+        from couchbase.options import QueryOptions
         from django.contrib.auth.models import Group
         from django.db import connection
-        from couchbase.options import QueryOptions
 
         name = f"coex_{uuid.uuid4().hex[:6]}"
         g = Group.objects.create(name=name)
@@ -253,8 +239,7 @@ class TestCoexistence:
         cluster = connection.couchbase_cluster
         rows = list(
             cluster.query(
-                "SELECT d.`name` FROM `testbucket`.`_default`.`auth_group` AS d "
-                "WHERE d.`name` = $1",
+                "SELECT d.`name` FROM `testbucket`.`_default`.`auth_group` AS d WHERE d.`name` = $1",
                 QueryOptions(
                     positional_parameters=[name],
                     scan_consistency="request_plus",
@@ -267,8 +252,7 @@ class TestCoexistence:
         g.delete()
         rows = list(
             cluster.query(
-                "SELECT d.`name` FROM `testbucket`.`_default`.`auth_group` AS d "
-                "WHERE d.`name` = $1",
+                "SELECT d.`name` FROM `testbucket`.`_default`.`auth_group` AS d WHERE d.`name` = $1",
                 QueryOptions(
                     positional_parameters=[name],
                     scan_consistency="request_plus",
@@ -303,7 +287,8 @@ class TestTimezoneAwareDatetimes:
         """Datetimes should roundtrip correctly with USE_TZ=True."""
         settings.USE_TZ = True
 
-        from datetime import datetime, timezone as tz
+        from datetime import datetime
+        from datetime import timezone as tz
 
         from django.contrib.auth.models import User
 
@@ -326,7 +311,8 @@ class TestTimezoneAwareDatetimes:
         """Non-UTC datetimes should be converted to UTC for storage."""
         settings.USE_TZ = True
 
-        from datetime import datetime, timedelta, timezone as tz
+        from datetime import datetime, timedelta
+        from datetime import timezone as tz
 
         from django.contrib.auth.models import User
 
@@ -363,30 +349,30 @@ class TestTimezoneAwareDatetimes:
 class TestWindowFunctions:
     """Test window function support (ROW_NUMBER, RANK, etc.)."""
 
-    def test_window_row_number(self):
-        """ROW_NUMBER() window function should work."""
+    def test_window_row_number_unsupported(self):
+        """Window functions are not advertised as supported (no integration coverage)."""
         from django.contrib.auth.models import Group
         from django.db.models import F, Window
         from django.db.models.functions import RowNumber
+        from django.db.utils import NotSupportedError
 
         names = [f"win_{uuid.uuid4().hex[:4]}" for _ in range(3)]
         for n in names:
             Group.objects.create(name=n)
-
-        qs = Group.objects.filter(name__in=names).annotate(
-            row_num=Window(expression=RowNumber(), order_by=F("name").asc())
-        )
-        results = list(qs.values_list("name", "row_num"))
-        assert len(results) == 3
-        row_nums = [r[1] for r in results]
-        assert sorted(row_nums) == [1, 2, 3]
-        Group.objects.filter(name__in=names).delete()
+        try:
+            qs = Group.objects.filter(name__in=names).annotate(
+                row_num=Window(expression=RowNumber(), order_by=F("name").asc())
+            )
+            with pytest.raises(NotSupportedError):
+                list(qs.values_list("name", "row_num"))
+        finally:
+            Group.objects.filter(name__in=names).delete()
 
     def test_supports_over_clause_flag(self):
-        """Feature flag should be True."""
+        """Feature flag is conservative until window-function support is verified."""
         from django.db import connection
 
-        assert connection.features.supports_over_clause
+        assert connection.features.supports_over_clause is False
 
 
 class TestPreparedStatementCaching:
@@ -437,9 +423,7 @@ class TestQueryContext:
 
         with connection.cursor() as cursor:
             # This uses a fully qualified name — should work regardless
-            cursor.execute(
-                "SELECT 1 AS `val` FROM `testbucket`.`_default`.`auth_group` LIMIT 1"
-            )
+            cursor.execute("SELECT 1 AS `val` FROM `testbucket`.`_default`.`auth_group` LIMIT 1")
             # No error means query_context didn't interfere
 
     def test_cursor_has_query_context(self):

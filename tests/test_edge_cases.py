@@ -12,6 +12,7 @@ import datetime
 import uuid
 
 import pytest
+
 from django_couchbase_orm.document import Document
 from django_couchbase_orm.exceptions import OperationError, ValidationError
 from django_couchbase_orm.fields.base import BaseField
@@ -28,9 +29,7 @@ from django_couchbase_orm.fields.simple import (
     StringField,
     UUIDField,
 )
-
 from tests.conftest import couchbase_available, flush_collection
-
 
 # ============================================================
 # Unit tests — no Couchbase required
@@ -676,8 +675,12 @@ class TestOperationsDateHandling:
         from django_couchbase_orm.db.backends.couchbase.operations import DatabaseOperations
 
         ops = DatabaseOperations.__new__(DatabaseOperations)
-        assert ops.adapt_decimalfield_value(Decimal("3.14")) == 3.14
+        # Decimals are now serialized as strings to preserve precision.
+        assert ops.adapt_decimalfield_value(Decimal("3.14")) == "3.14"
         assert ops.adapt_decimalfield_value(None) is None
+        # High-precision value survives the round-trip exactly.
+        big = Decimal("1234567890.123456789012345")
+        assert ops.adapt_decimalfield_value(big) == "1234567890.123456789012345"
 
 
 class TestConvertIntegerFieldValue:
@@ -778,9 +781,7 @@ class EdgeDoc(Document):
         collection_name = "edge_test_docs"
 
 
-integration_mark = pytest.mark.skipif(
-    not couchbase_available, reason="Local Couchbase not available"
-)
+integration_mark = pytest.mark.skipif(not couchbase_available, reason="Local Couchbase not available")
 
 
 def _flush_edge_docs():
@@ -795,6 +796,7 @@ class TestUpdateReturnTypes:
     def _cleanup(self, settings):
         settings.COUCHBASE = LOCAL_COUCHBASE
         from django_couchbase_orm.connection import reset_connections
+
         reset_connections()
         _flush_edge_docs()
         yield
@@ -846,6 +848,7 @@ class TestSaveUpdateCycles:
     def _cleanup(self, settings):
         settings.COUCHBASE = LOCAL_COUCHBASE
         from django_couchbase_orm.connection import reset_connections
+
         reset_connections()
         _flush_edge_docs()
         yield
@@ -908,6 +911,7 @@ class TestQueryEdgeCases:
     def _cleanup(self, settings):
         settings.COUCHBASE = LOCAL_COUCHBASE
         from django_couchbase_orm.connection import reset_connections
+
         reset_connections()
         _flush_edge_docs()
         yield
@@ -927,9 +931,7 @@ class TestQueryEdgeCases:
         EdgeDoc(name="bob", age=25, active=True).save()
         EdgeDoc(name="charlie", age=35, active=False).save()
 
-        results = list(
-            EdgeDoc.objects.filter(active=True).filter(age__gte=30)
-        )
+        results = list(EdgeDoc.objects.filter(active=True).filter(age__gte=30))
         assert len(results) == 1
         assert results[0].name == "alice"
 
@@ -1062,6 +1064,7 @@ class TestCompoundFieldIntegration:
     def _cleanup(self, settings):
         settings.COUCHBASE = LOCAL_COUCHBASE
         from django_couchbase_orm.connection import reset_connections
+
         reset_connections()
         _flush_edge_docs()
         yield
@@ -1111,6 +1114,7 @@ class TestDeleteEdgeCases:
     def _cleanup(self, settings):
         settings.COUCHBASE = LOCAL_COUCHBASE
         from django_couchbase_orm.connection import reset_connections
+
         reset_connections()
         _flush_edge_docs()
         yield
@@ -1146,6 +1150,7 @@ class TestAggregations:
     def _cleanup(self, settings):
         settings.COUCHBASE = LOCAL_COUCHBASE
         from django_couchbase_orm.connection import reset_connections
+
         reset_connections()
         _flush_edge_docs()
         yield
@@ -1212,6 +1217,7 @@ class TestDjangoBackendUpdateRegression:
     def _cleanup(self, settings):
         settings.COUCHBASE = LOCAL_COUCHBASE
         from django_couchbase_orm.connection import reset_connections
+
         reset_connections()
         _flush_edge_docs()
         yield
@@ -1252,7 +1258,6 @@ class TestDjangoBackendUpdateRegression:
         user = User.objects.create_user(username, f"{username}@test.com", "pass123")
 
         # This is the exact pattern Django uses internally
-        from django.db.models.sql import UpdateQuery
 
         count = User.objects.filter(pk=user.pk).update(first_name="Test")
         assert count > 0  # Must not raise TypeError
@@ -1262,7 +1267,6 @@ class TestDjangoBackendUpdateRegression:
     def test_login_updates_last_login(self):
         """django.contrib.auth.login() updates last_login field."""
         from django.contrib.auth import authenticate
-
         from django.contrib.auth.models import User
 
         username = f"edge_login_{uuid.uuid4().hex[:8]}"

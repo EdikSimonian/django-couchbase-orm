@@ -112,16 +112,24 @@ class SQLInsertCompiler(CouchbaseCompilerMixin, base_compiler.SQLInsertCompiler)
         return unique_sets
 
     def _find_existing_by_unique(self, opts, fields_data):
-        """Check if a document with matching unique fields already exists.
+        """Best-effort uniqueness check for non-PK unique constraints.
 
-        Couchbase has no database-level UNIQUE constraint, so we enforce
-        it at the application level during INSERT.
+        Couchbase has no UNIQUE constraint and no UNIQUE INDEX type — N1QL
+        only enforces uniqueness on the document KEY. This pre-check uses a
+        request_plus SELECT, so it is RACE-PRONE: two concurrent inserts can
+        both pass the check and produce duplicate field values. Treat it as
+        a fast-path validator, not a guarantee. PK uniqueness IS guaranteed
+        because the document key collision is rejected atomically by the KV
+        engine on INSERT.
 
         Returns (existing_pk, violated_fields) or (None, None).
         """
         unique_sets = self._collect_unique_sets(opts)
         if not unique_sets:
             return None, None
+
+        pk_col = opts.pk.column if opts.pk else "id"
+        qn = self.connection.ops.quote_name
 
         for unique_fields in unique_sets:
             conditions = []
@@ -137,7 +145,7 @@ class SQLInsertCompiler(CouchbaseCompilerMixin, base_compiler.SQLInsertCompiler)
                 if val is None:
                     all_present = False
                     break
-                conditions.append(f"`{col}` = ${len(params) + 1}")
+                conditions.append(f"{qn(col)} = ${len(params) + 1}")
                 params.append(val)
 
             if not all_present or not conditions:
@@ -147,10 +155,12 @@ class SQLInsertCompiler(CouchbaseCompilerMixin, base_compiler.SQLInsertCompiler)
 
             bucket = self.connection.settings_dict["NAME"]
             scope = self.connection.settings_dict.get("OPTIONS", {}).get("SCOPE", "_default")
-            qn = self.connection.ops.quote_name
             keyspace = f"{qn(bucket)}.{qn(scope)}.{qn(opts.db_table)}"
             where = " AND ".join(conditions)
-            sql = f"SELECT `id` FROM {keyspace} WHERE {where} LIMIT 1"
+            # Select the actual PK column (custom-PK models break with hardcoded id),
+            # plus META().id as a fallback for legacy rows where the pk column was
+            # not stored in the document body.
+            sql = f"SELECT {qn(pk_col)} AS pk_val, META().id AS meta_id FROM {keyspace} WHERE {where} LIMIT 1"
 
             try:
                 result = self.connection.connection.query(
@@ -161,7 +171,9 @@ class SQLInsertCompiler(CouchbaseCompilerMixin, base_compiler.SQLInsertCompiler)
                     ),
                 )
                 for row in result.rows():
-                    existing_id = row.get("id")
+                    existing_id = row.get("pk_val")
+                    if existing_id is None:
+                        existing_id = row.get("meta_id")
                     if existing_id is not None:
                         return existing_id, unique_fields
             except Exception as e:
@@ -174,20 +186,24 @@ class SQLInsertCompiler(CouchbaseCompilerMixin, base_compiler.SQLInsertCompiler)
         return None, None
 
     def as_sql(self):
-        """Generate N1QL UPSERT statements.
+        """Generate N1QL INSERT (or UPSERT for on_conflict=UPDATE) statements.
 
-        Couchbase UPSERT syntax:
-            UPSERT INTO keyspace (KEY, VALUE)
-            VALUES ($id, {field1: $val1, field2: $val2, ...})
+        Returns a list of ``(sql, params, on_conflict)`` 3-tuples. Couchbase
+        enforces document-key uniqueness atomically: INSERT raises
+        DocumentExistsException when the key already exists, which
+        execute_sql translates to IntegrityError.
 
-        Each document is inserted as a JSON object with a sequential
-        integer document key (for compatibility with Django/Wagtail).
+        Non-PK unique constraints are pre-checked by _find_existing_by_unique
+        (best-effort, race-prone — see that method's docstring).
         """
+        from django.db.models.constants import OnConflict
+
         opts = self.query.get_meta()
         keyspace = self._get_keyspace(opts.db_table)
         result_sqls = []
 
         has_fields = bool(self.query.fields)
+        on_conflict = getattr(self.query, "on_conflict", None)
 
         for obj in self.query.objs:
             doc_id = None
@@ -217,35 +233,35 @@ class SQLInsertCompiler(CouchbaseCompilerMixin, base_compiler.SQLInsertCompiler)
                     else:
                         fields_data[col_name] = value
 
+            row_op = "INSERT"
             if doc_id is None:
-                # Check unique constraints to prevent duplicates.
+                # Best-effort multi-field unique constraint check.
                 existing_pk, violated_fields = self._find_existing_by_unique(opts, fields_data)
                 if existing_pk is not None:
-                    on_conflict = getattr(self.query, "on_conflict", None)
-                    if on_conflict is not None:
-                        from django.db.models.constants import OnConflict
-
-                        if on_conflict == OnConflict.IGNORE:
-                            continue  # Skip this row.
-                        elif on_conflict == OnConflict.UPDATE:
-                            doc_id = existing_pk  # Update existing doc.
-                    if doc_id is None:
-                        # Normal INSERT — raise IntegrityError.
+                    if on_conflict == OnConflict.IGNORE:
+                        continue  # Skip this row.
+                    elif on_conflict == OnConflict.UPDATE:
+                        doc_id = existing_pk
+                        row_op = "UPSERT"
+                    else:
                         from django.db import IntegrityError
 
                         cols = ", ".join(violated_fields)
                         raise IntegrityError(f"UNIQUE constraint failed: {opts.db_table} ({cols})")
                 else:
                     doc_id = self._generate_pk(opts.db_table)
+            else:
+                # User-supplied PK. on_conflict=UPDATE turns the row into an UPSERT;
+                # otherwise INSERT semantics will reject duplicate keys at the KV layer.
+                if on_conflict == OnConflict.UPDATE:
+                    row_op = "UPSERT"
 
             # Store PK in document body so SELECT can find it.
             fields_data[pk_col_name] = doc_id
 
-            # Use UPSERT so re-saving with the same PK works (no duplicate key errors).
-            # Couchbase document KEY must be a string.
-            sql = f"UPSERT INTO {keyspace} (KEY, VALUE) VALUES (%s, %s)"
+            sql = f"{row_op} INTO {keyspace} (KEY, VALUE) VALUES (%s, %s)"
             params = (str(doc_id), fields_data)
-            result_sqls.append((sql, params))
+            result_sqls.append((sql, params, on_conflict))
 
             # Store the doc_id so execute_sql can retrieve it.
             if hasattr(obj, "pk") and obj.pk is None:
@@ -254,12 +270,23 @@ class SQLInsertCompiler(CouchbaseCompilerMixin, base_compiler.SQLInsertCompiler)
         return result_sqls
 
     def execute_sql(self, returning_fields=None):
+        from django.db import IntegrityError
+        from django.db.models.constants import OnConflict
+
         opts = self.query.get_meta()
         self.returning_fields = returning_fields
 
         with self.connection.cursor() as cursor:
-            for sql, params in self.as_sql():
-                cursor.execute(sql, params)
+            for sql, params, on_conflict in self.as_sql():
+                try:
+                    cursor.execute(sql, params)
+                except Exception as e:
+                    err_str = str(e)
+                    if _is_duplicate_key_error(e, err_str):
+                        if on_conflict == OnConflict.IGNORE:
+                            continue
+                        raise IntegrityError(f"UNIQUE constraint failed: {opts.db_table} (primary key)") from e
+                    raise
 
             if not self.returning_fields:
                 return []
@@ -271,6 +298,19 @@ class SQLInsertCompiler(CouchbaseCompilerMixin, base_compiler.SQLInsertCompiler)
                 if pk_val is not None:
                     rows.append((pk_val,))
             return rows
+
+
+def _is_duplicate_key_error(exc, err_str):
+    """Detect a Couchbase duplicate-key error from either an exception or its message."""
+    if "DocumentExistsException" in type(exc).__name__:
+        return True
+    if "DocumentExists" in err_str or "document_exists" in err_str:
+        return True
+    # N1QL error 12009: KV_DUPLICATE_KEY (primary key conflict on INSERT INTO).
+    # N1QL error 17012: duplicate key for INSERT statement.
+    if "12009" in err_str or "17012" in err_str:
+        return True
+    return False
 
 
 class SQLDeleteCompiler(CouchbaseCompilerMixin, base_compiler.SQLDeleteCompiler):

@@ -8,8 +8,7 @@ Requires: docker run -d --name couchbase-test -p 8091-8097:8091-8097 -p 11210-11
 import uuid
 
 import pytest
-from django.db import connection, models
-from django.test import override_settings
+from django.db import connection
 
 from django_couchbase_orm.db.backends.couchbase.cursor import (
     CouchbaseCursor,
@@ -19,9 +18,7 @@ from django_couchbase_orm.db.backends.couchbase.cursor import (
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
-
 from tests.conftest import couchbase_available
-
 
 BACKEND_SETTINGS = {
     "default": {
@@ -44,6 +41,7 @@ pytestmark = [
 # ===================================================================
 # Unit tests — no Couchbase required
 # ===================================================================
+
 
 class TestParseSelectColumns:
     """Test the SELECT column parser used by CouchbaseCursor."""
@@ -126,9 +124,7 @@ class TestParamConversion:
 
     def test_simple_params(self):
         cursor = CouchbaseCursor.__new__(CouchbaseCursor)
-        sql, params = cursor._convert_params(
-            "SELECT * FROM t WHERE x = %s AND y = %s", ("a", "b")
-        )
+        sql, params = cursor._convert_params("SELECT * FROM t WHERE x = %s AND y = %s", ("a", "b"))
         assert sql == "SELECT * FROM t WHERE x = $1 AND y = $2"
         assert params == ["a", "b"]
 
@@ -140,9 +136,7 @@ class TestParamConversion:
 
     def test_escaped_percent(self):
         cursor = CouchbaseCursor.__new__(CouchbaseCursor)
-        sql, params = cursor._convert_params(
-            "SELECT * FROM t WHERE x LIKE %%s%% AND y = %s", ("val",)
-        )
+        sql, params = cursor._convert_params("SELECT * FROM t WHERE x LIKE %%s%% AND y = %s", ("val",))
         # %%s%% should remain as %s% (unescaped), only the lone %s converts
         assert "$1" in sql
         assert params == ["val"]
@@ -173,17 +167,14 @@ class TestCursorExecute:
 
     def test_simple_select(self):
         with connection.cursor() as cursor:
-            cursor.execute(
-                "SELECT 1 AS `val` FROM `testbucket`.`_default`.`django_content_type` LIMIT 1"
-            )
+            cursor.execute("SELECT 1 AS `val` FROM `testbucket`.`_default`.`django_content_type` LIMIT 1")
             row = cursor.fetchone()
             assert row is not None
 
     def test_select_with_params(self):
         with connection.cursor() as cursor:
             cursor.execute(
-                "SELECT `app_label` FROM `testbucket`.`_default`.`django_content_type` "
-                "WHERE `app_label` = %s LIMIT 1",
+                "SELECT `app_label` FROM `testbucket`.`_default`.`django_content_type` WHERE `app_label` = %s LIMIT 1",
                 ("auth",),
             )
             row = cursor.fetchone()
@@ -192,17 +183,14 @@ class TestCursorExecute:
 
     def test_fetchall(self):
         with connection.cursor() as cursor:
-            cursor.execute(
-                "SELECT `app_label` FROM `testbucket`.`_default`.`django_content_type`"
-            )
+            cursor.execute("SELECT `app_label` FROM `testbucket`.`_default`.`django_content_type`")
             rows = cursor.fetchall()
             assert isinstance(rows, list)
 
     def test_empty_result(self):
         with connection.cursor() as cursor:
             cursor.execute(
-                "SELECT * FROM `testbucket`.`_default`.`django_content_type` "
-                "WHERE `app_label` = %s",
+                "SELECT * FROM `testbucket`.`_default`.`django_content_type` WHERE `app_label` = %s",
                 ("nonexistent_app_label_xyz",),
             )
             assert cursor.fetchone() is None
@@ -364,9 +352,7 @@ class TestModelCRUD:
         username = f"vlist_{uuid.uuid4().hex[:8]}"
         User.objects.create_user(username, f"{username}@test.com", "pass123")
 
-        result = list(
-            User.objects.filter(username=username).values_list("username", flat=True)
-        )
+        result = list(User.objects.filter(username=username).values_list("username", flat=True))
         assert result == [username]
 
         User.objects.filter(username=username).first().delete()
@@ -381,10 +367,7 @@ class TestModelCRUD:
 
         # Use full object query (not values_list) to avoid N1QL's lack
         # of positional ORDER BY (ORDER BY 1).
-        ordered = [
-            g.name
-            for g in Group.objects.filter(name__startswith=prefix).order_by("name")
-        ]
+        ordered = [g.name for g in Group.objects.filter(name__startswith=prefix).order_by("name")]
         assert ordered == sorted(names)
 
         Group.objects.filter(name__startswith=prefix).delete()
@@ -455,6 +438,7 @@ class TestAuth:
 
         username = f"auth_{uuid.uuid4().hex[:8]}"
         from django.contrib.auth.models import User
+
         User.objects.create_user(username, f"{username}@test.com", "pass123")
 
         authed = authenticate(username=username, password="pass123")
@@ -491,14 +475,14 @@ class TestDatabaseOperations:
 
     def test_adapt_datefield(self):
         import datetime
+
         result = connection.ops.adapt_datefield_value(datetime.date(2024, 1, 15))
         assert result == "2024-01-15"
 
     def test_adapt_datetimefield(self):
         import datetime
-        result = connection.ops.adapt_datetimefield_value(
-            datetime.datetime(2024, 1, 15, 10, 30, 0)
-        )
+
+        result = connection.ops.adapt_datetimefield_value(datetime.datetime(2024, 1, 15, 10, 30, 0))
         assert "2024-01-15" in result
         assert "10:30:00" in result
 
@@ -533,7 +517,8 @@ class TestDatabaseFeatures:
         assert connection.features.has_bulk_insert
 
     def test_supports_window_functions(self):
-        assert connection.features.supports_over_clause
+        # Conservative until window-function support has integration coverage.
+        assert connection.features.supports_over_clause is False
 
     def test_supports_timezones(self):
         assert connection.features.supports_timezones

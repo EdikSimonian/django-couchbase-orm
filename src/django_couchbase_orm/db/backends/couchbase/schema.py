@@ -184,7 +184,13 @@ class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
             self._create_unique_index(model, [new_field])
 
     def _create_unique_index(self, model, fields):
-        """Create a unique N1QL index on the given fields."""
+        """Create a non-unique N1QL index that backs application-level unique checks.
+
+        N1QL has no UNIQUE INDEX type — uniqueness on non-PK fields cannot be
+        enforced by Couchbase. The index here only speeds up the best-effort
+        SELECT used by SQLInsertCompiler._find_existing_by_unique. PK uniqueness
+        is enforced by the KV engine via INSERT semantics.
+        """
         collection_name = model._meta.db_table
         bucket_name, scope_name = self._get_bucket_and_scope()
         qn = self.connection.ops.quote_name
@@ -202,7 +208,11 @@ class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
             if "already exists" in str(e).lower():
                 pass
             else:
-                logger.warning("Could not create unique index %s: %s", index_name, e)
+                logger.warning(
+                    "Could not create best-effort uniqueness lookup index %s: %s",
+                    index_name,
+                    e,
+                )
 
     def _drop_unique_index(self, model, fields):
         """Drop a unique index."""

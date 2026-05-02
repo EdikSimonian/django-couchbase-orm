@@ -1,4 +1,14 @@
-"""DB-API 2.0 compatible cursor for Couchbase N1QL queries."""
+"""DB-API 2.0 compatible cursor for Couchbase N1QL queries.
+
+The free functions in the lower half of this module (``_fix_*``,
+``_deduplicate_select_columns``, ``_collapse_in_clauses`` etc.) are regex-
+based SQL rewriters applied to whatever Django's compilers emit. They are
+brittle around quoted identifiers, nested subqueries, and string literals
+that resemble SQL keywords — treat them as last-resort compatibility shims,
+not a parser. New translations should land as Django compiler hooks
+(``Func.as_couchbase``, ``Operations`` overrides, custom compilers) and
+this layer should keep shrinking.
+"""
 
 from __future__ import annotations
 
@@ -537,6 +547,7 @@ class CouchbaseCursor:
         scan_consistency="request_plus",
         adhoc=True,
         wrapper=None,
+        graceful_query_errors=False,
     ):
         self._cluster = cluster
         self._bucket_name = bucket_name
@@ -544,6 +555,10 @@ class CouchbaseCursor:
         self._scan_consistency = scan_consistency
         self._adhoc = adhoc  # False = use prepared statement caching.
         self._wrapper = wrapper  # DatabaseWrapper ref for transaction state.
+        # When True, certain N1QL syntax / unsupported-pattern errors on SELECT
+        # are downgraded to "no rows" instead of raising. Default is False:
+        # query errors propagate so callers see broken queries immediately.
+        self._graceful_query_errors = graceful_query_errors
         self._results = None
         self._rows: list[tuple] = []
         self._row_index = 0
@@ -775,24 +790,26 @@ class CouchbaseCursor:
                     self._rowcount = 0
                     return
 
-            # Handle N1QL limitations for SELECT queries:
-            # 3000 = syntax error (often from unsupported SQL patterns in migrations)
-            # 4210 = correlated subquery in GROUP BY (unsupported N1QL pattern)
-            # Log as error for visibility but return empty to avoid crashing migrations.
-            if err_code in ("3000", "4210") and (
-                n1ql.strip().upper().startswith("SELECT")
-                or "None(" in n1ql  # PostgreSQL-specific function in data migration
+            # Optional fail-soft for SELECT errors. Disabled by default since
+            # treating syntax errors as "no rows" hides real bugs. Enable with
+            # OPTIONS["GRACEFUL_QUERY_ERRORS"]=True only if running data
+            # migrations that intentionally produce some unsupported queries.
+            #   3000 = N1QL syntax error
+            #   4210 = correlated subquery in GROUP BY (unsupported N1QL pattern)
+            if (
+                self._graceful_query_errors
+                and err_code in ("3000", "4210")
+                and n1ql.strip().upper().startswith("SELECT")
             ):
                 import logging
+                import re as _re_log
 
                 # Redact WHERE clause params from logged query to avoid exposing
                 # sensitive data (usernames, emails, etc.) in log files.
-                import re as _re_log
-
                 redacted = _re_log.sub(r"\$\d+", "$?", n1ql[:200])
                 logging.getLogger("django.db.backends.couchbase").error(
-                    "N1QL error %s: unsupported query pattern — returning empty result. "
-                    "This may indicate a query that needs rewriting for Couchbase. Query: %s",
+                    "N1QL error %s: unsupported query pattern — returning empty "
+                    "result (GRACEFUL_QUERY_ERRORS=True). Query: %s",
                     err_code,
                     redacted,
                 )

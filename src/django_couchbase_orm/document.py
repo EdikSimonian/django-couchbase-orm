@@ -4,6 +4,7 @@ from collections import OrderedDict
 from typing import Any
 
 from django_couchbase_orm.exceptions import (
+    ConcurrentModificationError,
     DocumentDoesNotExist,
     MultipleDocumentsReturned,
     OperationError,
@@ -192,10 +193,12 @@ class Document(metaclass=DocumentMetaclass):
         return data
 
     @classmethod
-    def from_dict(cls, key: str, data: dict[str, Any]) -> Document:
+    def from_dict(cls, key: str, data: dict[str, Any], cas: int | None = None) -> Document:
         """Create a Document instance from a Couchbase document key and dict.
 
-        This is used to hydrate documents fetched from Couchbase.
+        Used to hydrate documents fetched from Couchbase. ``cas`` is the
+        ``META(d).cas`` value pulled alongside the document; populate it so
+        ``Document.save()`` can do an optimistic-lock replace.
         """
         kwargs = {}
         for field_name, field in cls._meta.fields.items():
@@ -204,6 +207,8 @@ class Document(metaclass=DocumentMetaclass):
                 kwargs[field_name] = field.to_python(data[db_field])
         instance = cls(_id=key, **kwargs)
         instance._is_new = False
+        if cas is not None:
+            instance._cas = cas
         return instance
 
     def full_clean(self) -> None:
@@ -232,10 +237,17 @@ class Document(metaclass=DocumentMetaclass):
             collection=self._meta.collection_name,
         )
 
-    def save(self, validate: bool = True) -> None:
+    def save(self, validate: bool = True, *, cas: bool | None = None) -> None:
         """Save the document to Couchbase.
 
-        Uses upsert to create or replace the document.
+        - New documents (``_is_new=True``) use ``insert``: a duplicate key
+          raises ``OperationError``.
+        - Existing documents use ``replace`` with the CAS captured at load
+          time when ``cas`` is True (default for documents that have a known
+          CAS); a concurrent writer mutating the document between fetch and
+          save triggers ``ConcurrentModificationError``.
+        - Pass ``cas=False`` to fall back to last-writer-wins ``upsert``.
+
         Fires pre_save and post_save signals.
         """
         created = self._is_new
@@ -253,12 +265,45 @@ class Document(metaclass=DocumentMetaclass):
         collection = self._get_collection()
         data = self.to_dict()
 
-        try:
-            from couchbase.options import UpsertOptions
+        # Default CAS policy: enabled when we have a previously-loaded CAS,
+        # otherwise we cannot do an optimistic check anyway.
+        use_cas = cas if cas is not None else (not self._is_new and self._cas is not None)
 
-            result = collection.upsert(self.pk, data, UpsertOptions())
+        try:
+            from couchbase.exceptions import (
+                CasMismatchException,
+                DocumentExistsException,
+                DocumentNotFoundException,
+            )
+            from couchbase.options import InsertOptions, ReplaceOptions, UpsertOptions
+
+            if self._is_new:
+                try:
+                    result = collection.insert(self.pk, data, InsertOptions())
+                except DocumentExistsException as e:
+                    raise OperationError(
+                        f"Document '{self.pk}' already exists. Use update or save() on a loaded instance to modify it."
+                    ) from e
+            elif use_cas:
+                try:
+                    result = collection.replace(
+                        self.pk,
+                        data,
+                        ReplaceOptions(cas=self._cas),
+                    )
+                except CasMismatchException as e:
+                    raise ConcurrentModificationError(
+                        f"Document '{self.pk}' was modified by another writer since it was loaded. Reload and retry."
+                    ) from e
+                except DocumentNotFoundException as e:
+                    raise OperationError(f"Document '{self.pk}' was deleted before save.") from e
+            else:
+                result = collection.upsert(self.pk, data, UpsertOptions())
+
             self._cas = result.cas
             self._is_new = False
+        except (ConcurrentModificationError, OperationError):
+            raise
         except Exception as e:
             raise OperationError(f"Failed to save document '{self.pk}': {e}") from e
 

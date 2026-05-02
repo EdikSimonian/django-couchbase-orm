@@ -108,7 +108,7 @@ The backend transparently handles the differences between SQL and N1QL:
 
 | SQL | N1QL (handled automatically) |
 |-----|-----|
-| `INSERT INTO` | `UPSERT INTO` (idempotent) |
+| `INSERT INTO` | `INSERT INTO` (raises `IntegrityError` on duplicate PK; use `update_conflicts=True` for upsert) |
 | `SUBSTRING(s, pos)` | `SUBSTR(s, pos-1)` (0-indexed) |
 | `IS NULL` | `IS NOT VALUED` (handles MISSING) |
 | `CAST(x AS INT)` | `TONUMBER(x)` |
@@ -237,15 +237,17 @@ If you use the database backend, the Document API auto-derives its config from `
 
 ## Known Limitations
 
-- **Transactions**: Couchbase ACID transactions require multi-node clusters. `atomic()` runs as a no-op on single-node setups.
-- **Window functions**: N1QL doesn't support `OVER()` clauses.
+- **Transactions**: `atomic()` issues N1QL `BEGIN WORK`/`COMMIT WORK`/`ROLLBACK WORK`. The default `DURABILITY_LEVEL='none'` works on both single-node and multi-node clusters; raising durability above `'none'` requires replica nodes. If `BEGIN WORK` fails the call now raises `OperationalError` rather than silently autocommitting — set `OPTIONS['TRANSACTIONS']='disabled'` on `DATABASES` to opt out and make `atomic()` a true no-op.
+- **INSERT semantics**: `Model.objects.create(...)` and `bulk_create(...)` now use `INSERT INTO` and raise `IntegrityError` on a duplicate PK instead of silently overwriting. Use `bulk_create(objs, update_conflicts=True)` for upsert behavior.
+- **Document API CAS**: `Document.save()` does an optimistic-lock `replace` with the CAS captured at load time and raises `ConcurrentModificationError` on conflict. Pass `save(cas=False)` for last-writer-wins.
+- **Query errors**: N1QL syntax/unsupported-pattern errors now propagate by default. Set `OPTIONS['GRACEFUL_QUERY_ERRORS']=True` if you want the prior fail-soft behavior for SELECT (returns empty results, logs the error).
+- **Window functions / UNION / partial / expression indexes**: not advertised as supported. Re-enable individually only after backend integration coverage is added.
 - **Page moves**: Wagtail page tree moves use raw SQL with reserved words. Use delete + recreate as a workaround.
-- **Correlated subqueries with GROUP BY**: Some complex query patterns return empty results gracefully instead of crashing.
 - **Multi-table inheritance**: Works but may have performance implications with N1QL JOINs.
 
 ## Tests
 
-**1,253 tests** across 47 test modules, tested on Python 3.10 - 3.14. All tests run against a real Dockerized Couchbase instance — no mocks for query execution.
+**1,275 tests** across 48 test modules, tested on Python 3.10 - 3.14. All tests run against a real Dockerized Couchbase instance — no mocks for query execution.
 
 | Suite | Tests | What's Covered |
 |-------|------:|----------------|

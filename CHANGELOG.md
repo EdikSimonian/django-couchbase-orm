@@ -1,5 +1,40 @@
 # Changelog
 
+## 1.3.0 (unreleased) — audit-driven correctness pass
+
+### Breaking changes
+
+- **`INSERT INTO` (was `UPSERT INTO`)** — `Model.objects.create(...)` and `bulk_create(...)` now use real INSERT semantics. A duplicate primary key raises `django.db.IntegrityError` instead of silently overwriting. Use `bulk_create(objs, update_conflicts=True)` to keep upsert behavior.
+- **N1QL errors propagate by default** — syntax errors and unsupported-pattern errors on SELECT now raise instead of being swallowed and returned as empty result sets. Set `OPTIONS['GRACEFUL_QUERY_ERRORS']=True` in `DATABASES` to restore the prior fail-soft behavior. The undocumented `"None("` heuristic was removed.
+- **Transaction BEGIN failures raise** — a failed `BEGIN WORK` now raises `OperationalError` with an actionable message instead of silently autocommitting. Set `OPTIONS['TRANSACTIONS']='disabled'` to make `atomic()` a true no-op on clusters that do not support transactions.
+- **Conservative feature flags** — `supports_over_clause`, `supports_select_union`, `supports_select_intersection`, `supports_select_difference`, `supports_partial_indexes`, and `supports_expression_indexes` are now `False`. Django will no longer generate SQL for these features that the cursor's regex SQL rewriter cannot reliably translate. Re-enable individually only after backend integration coverage lands.
+- **`BooleanField` strict string parsing** — `BooleanField` now accepts only `bool`, `int`, and a small set of strings (`true`/`false`/`yes`/`no`/`0`/`1`/`""`, case-insensitive). Other strings raise `ValidationError`. Previously any non-empty string coerced to `True`, so `"false"` round-tripped to `True`.
+- **`DecimalField` precision** — `DecimalField` is now serialized as a JSON string (round-tripped via `Decimal(str(...))`) instead of a JSON float, so values like `Decimal("1234567890.123456789012345")` survive exactly. Existing data stored as floats continues to read.
+
+### New features
+
+- **CAS-based optimistic locking on `Document.save()`** — by default, `save()` does an `insert` for new documents and a `replace` with the captured CAS for loaded documents. A concurrent writer raises the new `ConcurrentModificationError` (importable from `django_couchbase_orm`). Pass `save(cas=False)` for last-writer-wins. Queryset hydration now pulls `META(d).cas` alongside `META(d).id` (sync + async + select_related), so docs loaded via `.filter()` / `.get()` / `.iterator()` carry CAS too. `Manager.bulk_update(..., cas=True)` is the same.
+- **Nested JSON paths** — Django-style nested lookups now produce real nested-document references: `Doc.objects.filter(profile__address__city="Brooklyn")` becomes `d.\`profile\`.\`address\`.\`city\` = $1`. Previously the whole path was treated as one flat key. Each segment is validated against the safe-identifier regex.
+- **`OPTIONS['TRANSACTIONS']`** — `"enabled"` (default) or `"disabled"`. `"disabled"` skips `BEGIN WORK` entirely and reports `supports_transactions=False`.
+- **`OPTIONS['GRACEFUL_QUERY_ERRORS']`** — `False` (default). Set to `True` to swallow N1QL 3000/4210 SELECT errors and return empty rows (legacy 1.2.x behavior, useful for data migrations that intentionally generate unsupported queries).
+
+### Security / correctness
+
+- **Identifier validation everywhere** — bucket/scope/collection names, `sql_flush` table names, and aggregate aliases now go through validators. Backticks/whitespace/SQL meta-characters are rejected. The bucket validator matches Couchbase's bucket naming rules (digit-leading and `%` allowed, ≤100 chars). The scope/collection validator forbids dots (per Couchbase rules) and allows leading underscores for built-in scopes (`_default`, `_system`).
+- **Narrowed prefetch except** — `select_related()` prefetch (sync and async) now catches only `DocumentNotFoundException` for dangling references. Connection / auth / timeout errors propagate so they are visible.
+- **`_find_existing_by_unique` honors custom PK columns** — previously it hardcoded `SELECT \`id\``, which broke uniqueness pre-checks and `OnConflict.UPDATE` targeting on models with custom primary key column names.
+
+### Internal
+
+- Cursor module docstring labels the `_fix_*` regex SQL rewriters as last-resort compatibility shims; new translations should land as Django compiler hooks.
+- `_create_unique_index` clearly documents that N1QL has no `UNIQUE INDEX` type — the index it creates is a plain non-enforcing lookup index that speeds up the best-effort multi-field uniqueness pre-check.
+
+### Stats
+
+- 1,275 tests pass against real Couchbase (was 1,253 in 1.2.x). Added `tests/test_audit_fixes.py` (17 live tests) and 5 nested-path transform tests. Updated tests for new behavior on bool/decimal/CAS/feature-flags.
+
+---
+
 ## 1.2.0 (2026-04-13)
 
 ### New Features
