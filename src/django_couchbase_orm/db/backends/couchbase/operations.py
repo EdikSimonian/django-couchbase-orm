@@ -145,9 +145,23 @@ class DatabaseOperations(BaseDatabaseOperations):
         return value.isoformat()
 
     def adapt_decimalfield_value(self, value, max_digits=None, decimal_places=None):
+        """Serialize a Decimal as a JSON string to preserve precision.
+
+        JSON only has float (IEEE 754) — converting Decimal to float would lose
+        precision for large or high-scale values. We round-trip through str so
+        the exact decimal representation survives. The DecimalField converter
+        on the way back rebuilds Decimal from this string.
+        """
         if value is None:
             return None
-        return float(value)
+        from decimal import Decimal
+
+        if isinstance(value, Decimal):
+            return str(value)
+        # Already-str values pass through unchanged.
+        if isinstance(value, str):
+            return value
+        return str(Decimal(str(value)))
 
     # --- SQL generation helpers ---
 
@@ -155,10 +169,16 @@ class DatabaseOperations(BaseDatabaseOperations):
         """Return a list of N1QL statements to delete all data from the given tables."""
         if not tables:
             return []
+        from django_couchbase_orm.query.n1ql import (
+            _validate_bucket,
+            _validate_scope_or_collection,
+        )
+
         sql_list = []
-        bucket = self.connection.settings_dict["NAME"]
-        scope = self.connection.settings_dict.get("OPTIONS", {}).get("SCOPE", "_default")
+        bucket = _validate_bucket(self.connection.settings_dict["NAME"])
+        scope = _validate_scope_or_collection(self.connection.settings_dict.get("OPTIONS", {}).get("SCOPE", "_default"))
         for table in tables:
+            table = _validate_scope_or_collection(table)
             keyspace = f"`{bucket}`.`{scope}`.`{table}`"
             sql_list.append(f"DELETE FROM {keyspace}")
         return sql_list
@@ -257,6 +277,8 @@ class DatabaseOperations(BaseDatabaseOperations):
             converters.append(self.convert_datetimefield_value)
         elif internal_type == "TimeField":
             converters.append(self.convert_timefield_value)
+        elif internal_type == "DecimalField":
+            converters.append(self.convert_decimalfield_value)
         elif internal_type in (
             "IntegerField",
             "BigIntegerField",
@@ -271,6 +293,19 @@ class DatabaseOperations(BaseDatabaseOperations):
         ):
             converters.append(self.convert_integerfield_value)
         return converters
+
+    def convert_decimalfield_value(self, value, expression, connection):
+        """Decode the string representation persisted by adapt_decimalfield_value."""
+        if value is None:
+            return None
+        from decimal import Decimal
+
+        if isinstance(value, Decimal):
+            return value
+        try:
+            return Decimal(str(value))
+        except Exception:
+            return value
 
     def combine_expression(self, connector, sub_expressions):
         if connector == "||":

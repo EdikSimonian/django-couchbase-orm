@@ -2,7 +2,11 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from django_couchbase_orm.exceptions import DocumentDoesNotExist, OperationError
+from django_couchbase_orm.exceptions import (
+    ConcurrentModificationError,
+    DocumentDoesNotExist,
+    OperationError,
+)
 
 if TYPE_CHECKING:
     from django_couchbase_orm.document import Document
@@ -131,8 +135,7 @@ class DocumentManager:
                     f"Document '{pk}' exists but is not of type '{self._document_class._meta.doc_type_value}'."
                 )
 
-            instance = self._document_class.from_dict(pk, data)
-            instance._cas = result.cas
+            instance = self._document_class.from_dict(pk, data, cas=result.cas)
             return instance
         except DocumentNotFoundException:
             raise self._document_class.DoesNotExist(f"{self._document_class.__name__} with pk '{pk}' does not exist.")
@@ -181,8 +184,7 @@ class DocumentManager:
                     f"Document '{pk}' exists but is not of type '{self._document_class._meta.doc_type_value}'."
                 )
 
-            instance = self._document_class.from_dict(pk, data)
-            instance._cas = result.cas
+            instance = self._document_class.from_dict(pk, data, cas=result.cas)
             return instance
         except DocumentNotFoundException:
             raise self._document_class.DoesNotExist(f"{self._document_class.__name__} with pk '{pk}' does not exist.")
@@ -272,12 +274,16 @@ class DocumentManager:
 
         return documents
 
-    def bulk_update(self, documents: list[Document], fields: list[str]) -> int:
+    def bulk_update(self, documents: list[Document], fields: list[str], *, cas: bool = True) -> int:
         """Update specific fields on multiple documents in batch.
 
         Args:
             documents: List of Document instances to update.
             fields: List of field names to update.
+            cas: When True (default), each document is updated with the CAS
+                captured at load time. A concurrent writer triggers
+                ``ConcurrentModificationError``. Pass ``cas=False`` for
+                last-writer-wins semantics.
 
         Returns:
             The number of documents updated.
@@ -289,6 +295,8 @@ class DocumentManager:
         updated = 0
         try:
             import couchbase.subdocument as SD
+            from couchbase.exceptions import CasMismatchException
+            from couchbase.options import MutateInOptions
 
             field_map = {name: field.get_db_field() for name, field in self._document_class._meta.fields.items()}
 
@@ -303,9 +311,22 @@ class DocumentManager:
                     json_value = field_obj.to_json(value) if value is not None else None
                     specs.append(SD.upsert(db_field, json_value))
 
-                if specs:
-                    collection.mutate_in(doc.pk, specs)
+                if not specs:
+                    continue
+
+                try:
+                    if cas and doc._cas is not None:
+                        result = collection.mutate_in(doc.pk, specs, MutateInOptions(cas=doc._cas))
+                    else:
+                        result = collection.mutate_in(doc.pk, specs)
+                    doc._cas = result.cas
                     updated += 1
+                except CasMismatchException as e:
+                    raise ConcurrentModificationError(
+                        f"Document '{doc.pk}' was modified by another writer since it was loaded. Reload and retry."
+                    ) from e
+        except ConcurrentModificationError:
+            raise
         except Exception as e:
             raise OperationError(f"Failed during bulk_update: {e}") from e
 

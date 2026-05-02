@@ -303,6 +303,7 @@ class DatabaseWrapper(BaseDatabaseWrapper):
         scan_consistency = options.get("SCAN_CONSISTENCY", "request_plus")
         # adhoc=False enables prepared statement caching (server-side query plan reuse).
         adhoc = options.get("ADHOC", True)
+        graceful = bool(options.get("GRACEFUL_QUERY_ERRORS", False))
         return CouchbaseCursor(
             self.connection,
             params["bucket"],
@@ -310,6 +311,7 @@ class DatabaseWrapper(BaseDatabaseWrapper):
             scan_consistency=scan_consistency,
             adhoc=adhoc,
             wrapper=self,
+            graceful_query_errors=graceful,
         )
 
     def init_connection_state(self):
@@ -340,9 +342,27 @@ class DatabaseWrapper(BaseDatabaseWrapper):
         """
         return self.settings_dict.get("OPTIONS", {}).get("DURABILITY_LEVEL", "none")
 
+    def _transactions_mode(self):
+        """Return the configured transaction mode: 'enabled' or 'disabled'.
+
+        Default is 'enabled'. Set OPTIONS["TRANSACTIONS"]="disabled" to opt
+        out (atomic() becomes a true no-op) on clusters where BEGIN WORK is
+        not supported.
+        """
+        return self.settings_dict.get("OPTIONS", {}).get("TRANSACTIONS", "enabled").lower()
+
     def _start_transaction_under_autocommit(self):
-        """Start a N1QL transaction via BEGIN WORK."""
+        """Start a N1QL transaction via BEGIN WORK.
+
+        Raises DatabaseError on failure rather than silently autocommitting,
+        so callers cannot mistake a failed BEGIN for a successful transaction.
+        Set OPTIONS["TRANSACTIONS"]="disabled" to skip the BEGIN entirely.
+        """
         from couchbase.options import QueryOptions
+
+        if self._transactions_mode() == "disabled":
+            self._txid = None
+            return
 
         self.ensure_connection()
         durability = self._get_durability_level()
@@ -357,15 +377,15 @@ class DatabaseWrapper(BaseDatabaseWrapper):
             self._txid = None
             err_msg = str(e)
             if "DurabilityImpossible" in err_msg or "durability_impossible" in err_msg:
-                logger.warning(
-                    "Transaction BEGIN failed: durability level '%s' requires replicas. "
-                    "Set DURABILITY_LEVEL to 'none' in DATABASES OPTIONS for single-node "
-                    "clusters, or add replica nodes for '%s' durability.",
-                    durability,
-                    durability,
-                )
-            else:
-                logger.warning("Transaction BEGIN failed: %s", e)
+                raise _CouchbaseDatabase.OperationalError(
+                    f"Transaction BEGIN failed: durability level '{durability}' "
+                    f"requires replica nodes. For a single-node cluster, set "
+                    f"DURABILITY_LEVEL='none' in DATABASES OPTIONS, or set "
+                    f"OPTIONS['TRANSACTIONS']='disabled' to skip transactional wrapping."
+                ) from e
+            raise _CouchbaseDatabase.OperationalError(
+                f"Transaction BEGIN failed: {e}. Set OPTIONS['TRANSACTIONS']='disabled' to skip transactions."
+            ) from e
 
     def _commit(self):
         if self._txid is None:

@@ -5,6 +5,7 @@ __version__ = "1.0.0"
 from django_couchbase_orm.aggregates import Avg, Count, Max, Min, Sum
 from django_couchbase_orm.document import Document
 from django_couchbase_orm.exceptions import (
+    ConcurrentModificationError,
     DocumentDoesNotExist,
     MultipleDocumentsReturned,
     OperationError,
@@ -31,6 +32,7 @@ from django_couchbase_orm.paginator import CouchbasePaginator
 from django_couchbase_orm.queryset.q import Q
 
 __all__ = [
+    "ConcurrentModificationError",
     "Document",
     "DocumentDoesNotExist",
     "MultipleDocumentsReturned",

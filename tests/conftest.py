@@ -1,6 +1,5 @@
 import os
 import socket
-from unittest.mock import MagicMock, PropertyMock
 
 import django
 import pytest
@@ -104,6 +103,7 @@ class MockCollection:
     def __init__(self):
         self._store: dict[str, dict] = {}
         self._cas_counter = 0
+        self._cas_for_key: dict[str, int] = {}
 
     def _next_cas(self):
         self._cas_counter += 1
@@ -111,7 +111,9 @@ class MockCollection:
 
     def upsert(self, key, data, *args, **kwargs):
         self._store[key] = data
-        return MockCASResult(self._next_cas())
+        cas = self._next_cas()
+        self._cas_for_key[key] = cas
+        return MockCASResult(cas)
 
     def insert(self, key, data, *args, **kwargs):
         if key in self._store:
@@ -119,14 +121,35 @@ class MockCollection:
 
             raise DocumentExistsException()
         self._store[key] = data
-        return MockCASResult(self._next_cas())
+        cas = self._next_cas()
+        self._cas_for_key[key] = cas
+        return MockCASResult(cas)
+
+    def replace(self, key, data, *args, **kwargs):
+        from couchbase.exceptions import (
+            CasMismatchException,
+            DocumentNotFoundException,
+        )
+
+        if key not in self._store:
+            raise DocumentNotFoundException()
+        # Look for cas in args[0] (Options object) or kwargs.
+        provided_cas = kwargs.get("cas")
+        if provided_cas is None and args:
+            provided_cas = getattr(args[0], "cas", None) or getattr(args[0], "_cas", None)
+        if provided_cas is not None and self._cas_for_key.get(key) != provided_cas:
+            raise CasMismatchException()
+        self._store[key] = data
+        cas = self._next_cas()
+        self._cas_for_key[key] = cas
+        return MockCASResult(cas)
 
     def get(self, key, *args, **kwargs):
         if key not in self._store:
             from couchbase.exceptions import DocumentNotFoundException
 
             raise DocumentNotFoundException()
-        return MockGetResult(self._store[key], self._next_cas())
+        return MockGetResult(self._store[key], self._cas_for_key.get(key, self._next_cas()))
 
     def remove(self, key, *args, **kwargs):
         if key not in self._store:
@@ -134,7 +157,33 @@ class MockCollection:
 
             raise DocumentNotFoundException()
         del self._store[key]
+        self._cas_for_key.pop(key, None)
         return MockCASResult(self._next_cas())
+
+    def mutate_in(self, key, specs, *args, **kwargs):
+        from couchbase.exceptions import (
+            CasMismatchException,
+            DocumentNotFoundException,
+        )
+
+        if key not in self._store:
+            raise DocumentNotFoundException()
+        provided_cas = kwargs.get("cas")
+        if provided_cas is None and args:
+            provided_cas = getattr(args[0], "cas", None) or getattr(args[0], "_cas", None)
+        if provided_cas is not None and self._cas_for_key.get(key) != provided_cas:
+            raise CasMismatchException()
+        # Apply the specs as a flat dict update; only handle the upsert subdoc op.
+        doc = self._store[key]
+        for spec in specs:
+            path = getattr(spec, "_path", None) or getattr(spec, "path", None)
+            value = getattr(spec, "_value", None) or getattr(spec, "value", None)
+            if path is None:
+                continue
+            doc[path] = value
+        cas = self._next_cas()
+        self._cas_for_key[key] = cas
+        return MockCASResult(cas)
 
     def exists(self, key, *args, **kwargs):
         return MockExistsResult(key in self._store)

@@ -64,7 +64,7 @@ class TestBulkUpdate:
         docs[0]._data["score"] = 100
         docs[1]._data["score"] = 200
 
-        patch_collection.mutate_in = lambda key, specs: None  # mock subdoc
+        patch_collection.mutate_in = lambda key, specs, *a, **kw: type("R", (), {"cas": 1})()  # mock subdoc
 
         updated = BulkDoc.objects.bulk_update(docs, ["score"])
         assert updated == 2
@@ -79,6 +79,6 @@ class TestBulkUpdate:
     def test_unknown_field_raises(self, patch_collection):
         docs = [BulkDoc(name="Test")]
         BulkDoc.objects.bulk_create(docs)
-        patch_collection.mutate_in = lambda key, specs: None
+        patch_collection.mutate_in = lambda key, specs, *a, **kw: type("R", (), {"cas": 1})()
         with pytest.raises(OperationError):
             BulkDoc.objects.bulk_update(docs, ["nonexistent_field"])

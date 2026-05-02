@@ -6,13 +6,54 @@ import re
 from typing import Any
 
 _SAFE_IDENTIFIER = re.compile(r"^[a-zA-Z_][a-zA-Z0-9_]*$")
+# Couchbase bucket names: 1–100 chars, A–Z a–z 0–9 dot underscore hyphen percent.
+# A leading dot/underscore/percent is reserved by the server, so we forbid it.
+# Backticks and whitespace are forbidden everywhere — those would let an
+# attacker break out of `…` quoting.
+_SAFE_BUCKET = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9._\-%]{0,99}$")
+# Couchbase scope/collection names: A–Z a–z 0–9 underscore hyphen percent.
+# Dots are NOT permitted (they would re-introduce keyspace ambiguity).
+# Built-in scopes/collections (_default, _system) start with underscore, so
+# the leading-underscore form is allowed.
+_SAFE_SCOPE_COLL = re.compile(r"^[a-zA-Z0-9_][a-zA-Z0-9_\-%]{0,250}$")
 
 
 def _validate_identifier(name: str) -> str:
     """Validate a field/identifier name to prevent backtick injection."""
-    if not _SAFE_IDENTIFIER.match(name):
+    if not isinstance(name, str) or not _SAFE_IDENTIFIER.match(name):
         raise ValueError(f"Invalid identifier: {name!r}. Must be alphanumeric with underscores.")
     return name
+
+
+def _validate_bucket(name: str) -> str:
+    """Validate a Couchbase bucket name."""
+    if not isinstance(name, str) or not _SAFE_BUCKET.match(name):
+        raise ValueError(
+            f"Invalid bucket name: {name!r}. Must be 1–100 chars of "
+            "letters/digits/dots/underscores/hyphens/percent and not start with "
+            "'.', '_', or '%'."
+        )
+    return name
+
+
+def _validate_scope_or_collection(name: str) -> str:
+    """Validate a Couchbase scope or collection name."""
+    if not isinstance(name, str) or not _SAFE_SCOPE_COLL.match(name):
+        raise ValueError(
+            f"Invalid scope/collection name: {name!r}. Must be ≤251 chars of "
+            "letters/digits/underscores/hyphens/percent (no dots)."
+        )
+    return name
+
+
+def _validate_keyspace_part(name: str) -> str:
+    """Backwards-compat alias used by table-name call sites where the value
+    comes from Django's ``db_table``. Treats the input as a scope/collection
+    (the strictest of the two), which matches Couchbase collection rules.
+    Prefer :func:`_validate_bucket` for bucket names so legitimate buckets
+    starting with a digit or containing ``%`` aren't rejected.
+    """
+    return _validate_scope_or_collection(name)
 
 
 class N1QLQuery:
@@ -22,9 +63,9 @@ class N1QLQuery:
     """
 
     def __init__(self, bucket: str, scope: str = "_default", collection: str = "_default"):
-        self._bucket = bucket
-        self._scope = scope
-        self._collection = collection
+        self._bucket = _validate_bucket(bucket)
+        self._scope = _validate_scope_or_collection(scope)
+        self._collection = _validate_scope_or_collection(collection)
         self._select_fields: list[str] | None = None  # None = SELECT *
         self._select_raw: str | None = None  # For COUNT(*) etc.
         self._where_clauses: list[str] = []
@@ -113,7 +154,8 @@ class N1QLQuery:
         """
         parts = []
 
-        # SELECT
+        # SELECT — when META(d).id is requested we also pull META(d).cas so
+        # the document hydration path can populate _cas for optimistic locking.
         parts.append("SELECT")
         if self._select_raw:
             parts.append(self._select_raw)
@@ -121,11 +163,12 @@ class N1QLQuery:
             select_parts = []
             if self._meta_id:
                 select_parts.append("META(d).id AS __id")
+                select_parts.append("META(d).cas AS __cas")
             select_parts.extend(f"d.`{f}`" for f in self._select_fields)
             parts.append(", ".join(select_parts))
         else:
             if self._meta_id:
-                parts.append("META(d).id AS __id, d.*")
+                parts.append("META(d).id AS __id, META(d).cas AS __cas, d.*")
             else:
                 parts.append("d.*")
 

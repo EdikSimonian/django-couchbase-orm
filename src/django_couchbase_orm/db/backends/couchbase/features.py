@@ -11,10 +11,19 @@ class DatabaseFeatures(BaseDatabaseFeatures):
     allows_auto_pk_0 = False
 
     # Couchbase 7.0+ supports ACID transactions via N1QL BEGIN/COMMIT/ROLLBACK.
-    supports_transactions = True
+    # Reflects the runtime configuration: OPTIONS["TRANSACTIONS"]="disabled"
+    # turns this off so Django (and tests) treat the backend as non-transactional.
+    @property
+    def supports_transactions(self):
+        mode = self.connection.settings_dict.get("OPTIONS", {}).get("TRANSACTIONS", "enabled")
+        return str(mode).lower() != "disabled"
+
+    @property
+    def atomic_transactions(self):
+        return self.supports_transactions
+
     uses_savepoints = False
     can_release_savepoints = False
-    atomic_transactions = True
     can_rollback_ddl = False
 
     # No SELECT FOR UPDATE in N1QL.
@@ -63,20 +72,20 @@ class DatabaseFeatures(BaseDatabaseFeatures):
     supports_default_keyword_in_insert = False
     supports_default_keyword_in_bulk_insert = False
 
-    # N1QL supports UNION, INTERSECT, EXCEPT.
-    supports_select_union = True
-    supports_select_intersection = True
-    supports_select_difference = True
-
-    # N1QL supports partial indexes with WHERE clause.
-    supports_partial_indexes = True
-    supports_expression_indexes = True
+    # N1QL has UNION/INTERSECT/EXCEPT, partial/expression indexes, and OVER()
+    # at the SQL level, but the cursor's regex SQL rewriter has not been
+    # exercised against the SQL Django emits for these features. Advertising
+    # them as supported makes Django generate queries the rewriter mishandles.
+    # Re-enable each flag only after backend integration coverage lands.
+    supports_select_union = False
+    supports_select_intersection = False
+    supports_select_difference = False
+    supports_partial_indexes = False
+    supports_expression_indexes = False
+    supports_over_clause = False
 
     # N1QL supports DISTINCT.
     can_distinct_on_fields = False
-
-    # N1QL supports window functions (ROW_NUMBER, RANK, etc.) since Server 6.5.
-    supports_over_clause = True
 
     # Couchbase stores strings — no separate REAL type.
     has_real_datatype = False
@@ -106,8 +115,10 @@ class DatabaseFeatures(BaseDatabaseFeatures):
     # Couchbase has no sequence concept.
     supports_sequence_reset = False
 
-    # N1QL doesn't support ignore/update on conflicts natively.
-    # UPSERT inherently handles conflicts by overwriting.
+    # ignore_conflicts is emulated via a best-effort SELECT-then-INSERT in
+    # SQLInsertCompiler — that pre-check is race-prone for non-PK uniques,
+    # so we only advertise PK-level support. update_conflicts is not
+    # implemented (would require ON CONFLICT semantics N1QL lacks).
     supports_ignore_conflicts = True
     supports_update_conflicts = False
 

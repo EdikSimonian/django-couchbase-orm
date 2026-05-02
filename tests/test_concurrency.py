@@ -10,7 +10,6 @@ Tests thread safety of:
 - Django backend: concurrent ORM operations via multiple threads
 """
 
-import threading
 import time
 import uuid
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -18,9 +17,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 import pytest
 
 from django_couchbase_orm.document import Document
-from django_couchbase_orm.exceptions import OperationError
 from django_couchbase_orm.fields.simple import BooleanField, IntegerField, StringField
-
 from tests.conftest import couchbase_available, flush_collection
 
 LOCAL_COUCHBASE = {
@@ -33,9 +30,7 @@ LOCAL_COUCHBASE = {
     }
 }
 
-integration_mark = pytest.mark.skipif(
-    not couchbase_available, reason="Local Couchbase not available"
-)
+integration_mark = pytest.mark.skipif(not couchbase_available, reason="Local Couchbase not available")
 
 
 class ConcDoc(Document):
@@ -100,8 +95,9 @@ class TestConcurrentDocumentSaves:
         count = ConcDoc.objects.count()
         assert count == 10
 
-    def test_concurrent_saves_same_document(self):
-        """Multiple threads updating the same document — last write wins."""
+    def test_concurrent_saves_same_document_last_writer_wins(self):
+        """With cas=False, multiple threads updating the same document can
+        all succeed (last write wins, no conflict detection)."""
         doc = ConcDoc(name="shared", counter=0)
         doc.save()
         pk = doc.pk
@@ -113,7 +109,7 @@ class TestConcurrentDocumentSaves:
                 d = ConcDoc.objects.get(pk=pk)
                 d.counter = i
                 d.name = f"updated_by_{i}"
-                d.save()
+                d.save(cas=False)  # opt out of CAS for last-writer-wins
             except Exception as e:
                 errors.append(str(e))
 
@@ -122,10 +118,46 @@ class TestConcurrentDocumentSaves:
             for f in as_completed(futures):
                 f.result()
 
-        # No crashes — some updates may have been overwritten, that's expected
         assert len(errors) == 0, f"Errors: {errors}"
+        final = ConcDoc.objects.get(pk=pk)
+        assert final.name.startswith("updated_by_")
 
-        # Document should still exist with one of the values
+    def test_concurrent_saves_same_document_cas_detects_conflict(self):
+        """With CAS on (default), concurrent writers see ConcurrentModificationError."""
+        from django_couchbase_orm.exceptions import ConcurrentModificationError
+
+        doc = ConcDoc(name="shared", counter=0)
+        doc.save()
+        pk = doc.pk
+
+        results = {"success": 0, "conflict": 0, "other": []}
+        lock = __import__("threading").Lock()
+
+        def update_doc(i):
+            try:
+                d = ConcDoc.objects.get(pk=pk)
+                d.counter = i
+                d.name = f"updated_by_{i}"
+                d.save()
+                with lock:
+                    results["success"] += 1
+            except ConcurrentModificationError:
+                with lock:
+                    results["conflict"] += 1
+            except Exception as e:
+                with lock:
+                    results["other"].append(str(e))
+
+        with ThreadPoolExecutor(max_workers=8) as pool:
+            futures = [pool.submit(update_doc, i) for i in range(8)]
+            for f in as_completed(futures):
+                f.result()
+
+        # No unexpected exceptions, at least one writer succeeded, and at
+        # least one was rejected with a conflict (this is the whole point).
+        assert results["other"] == []
+        assert results["success"] >= 1
+        assert results["conflict"] >= 1
         final = ConcDoc.objects.get(pk=pk)
         assert final.name.startswith("updated_by_")
 
@@ -391,10 +423,7 @@ class TestConcurrentManagerOperations:
 
         def bulk_create_batch(batch_id):
             try:
-                docs = [
-                    ConcDoc(name=f"batch_{batch_id}_doc_{i}", counter=i)
-                    for i in range(5)
-                ]
+                docs = [ConcDoc(name=f"batch_{batch_id}_doc_{i}", counter=i) for i in range(5)]
                 created = ConcDoc.objects.bulk_create(docs)
                 return len(created)
             except Exception as e:
@@ -569,10 +598,7 @@ class TestConcurrentDjangoBackend:
                 errors.append(str(e))
 
         with ThreadPoolExecutor(max_workers=5) as pool:
-            futures = [
-                pool.submit(update_user, u, f"Name_{i}")
-                for i, u in enumerate(users)
-            ]
+            futures = [pool.submit(update_user, u, f"Name_{i}") for i, u in enumerate(users)]
             for f in as_completed(futures):
                 f.result()
 

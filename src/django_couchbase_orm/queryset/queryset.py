@@ -181,8 +181,9 @@ class QuerySet:
             documents = []
             for row in result:
                 doc_id = row.pop("__id", None)
+                cas = row.pop("__cas", None)
                 if doc_id:
-                    documents.append(self._document_class.from_dict(doc_id, row))
+                    documents.append(self._document_class.from_dict(doc_id, row, cas=cas))
                 else:
                     documents.append(row)
             # Prefetch referenced documents for select_related
@@ -221,13 +222,18 @@ class QuerySet:
                 scope=ref_class._meta.scope_name,
                 collection=ref_class._meta.collection_name,
             )
+            from couchbase.exceptions import DocumentNotFoundException
+
             for key in keys:
                 try:
                     result = collection.get(key)
                     data = result.content_as[dict]
-                    ref_cache[key] = ref_class.from_dict(key, data)
-                except Exception:
-                    pass
+                    ref_cache[key] = ref_class.from_dict(key, data, cas=result.cas)
+                except DocumentNotFoundException:
+                    # Dangling reference is a legitimate "skip" — leaves the
+                    # _prefetched cache without an entry for this key, and
+                    # the caller can detect missing FK via doc._data[field_name].
+                    continue
 
             # Attach prefetched docs as _prefetched_{field_name}
             for doc in documents:
@@ -378,6 +384,7 @@ class QuerySet:
             # Returns: {"avg_abv": 6.5, "max_abv": 12.0, "total": 150}
         """
         from django_couchbase_orm.aggregates import _build_agg_expression
+        from django_couchbase_orm.query.n1ql import _validate_identifier
 
         query = self._build_query()
         query._order_by = []
@@ -388,6 +395,7 @@ class QuerySet:
         field_map = self._get_field_map()
         select_parts = []
         for alias, agg in kwargs.items():
+            _validate_identifier(alias)
             expr = _build_agg_expression(agg, field_map)
             select_parts.append(f"{expr} AS `{alias}`")
 
@@ -566,8 +574,9 @@ class QuerySet:
 
         for row in result:
             doc_id = row.pop("__id", None)
+            cas = row.pop("__cas", None)
             if doc_id:
-                yield self._document_class.from_dict(doc_id, row)
+                yield self._document_class.from_dict(doc_id, row, cas=cas)
             else:
                 yield row
 
@@ -603,8 +612,9 @@ class QuerySet:
             documents = []
             async for row in result:
                 doc_id = row.pop("__id", None)
+                cas = row.pop("__cas", None)
                 if doc_id:
-                    documents.append(self._document_class.from_dict(doc_id, row))
+                    documents.append(self._document_class.from_dict(doc_id, row, cas=cas))
                 else:
                     documents.append(row)
             if self._select_related_fields and documents:
@@ -635,13 +645,17 @@ class QuerySet:
             )
 
             ref_cache = {}
+            from couchbase.exceptions import DocumentNotFoundException
+
             for key in keys:
                 try:
                     result = await collection.get(key)
                     data = result.content_as[dict]
-                    ref_cache[key] = ref_class.from_dict(key, data)
-                except Exception:
-                    pass
+                    ref_cache[key] = ref_class.from_dict(key, data, cas=result.cas)
+                except DocumentNotFoundException:
+                    # Dangling reference — leave the slot empty. All other
+                    # exceptions (auth, connection, timeout) propagate.
+                    continue
 
             for doc in documents:
                 key = doc._data.get(field_name)
