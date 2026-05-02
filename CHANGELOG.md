@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.3.0 (unreleased) — audit-driven correctness pass
+## 1.3.0 (2026-05-02) — audit-driven correctness pass
 
 ### Breaking changes
 
