@@ -18,6 +18,7 @@ INSTALLED_APPS = [
 # Add Wagtail apps if available (for wagtail_crud integration tests)
 try:
     import wagtail  # noqa: F401
+
     INSTALLED_APPS += [
         "taggit",
         "modelcluster",
@@ -90,6 +91,13 @@ DATABASES = {
         "HOST": os.environ.get("CB_CONNECTION_STRING", "couchbase://localhost"),
         "OPTIONS": {
             "SCOPE": os.environ.get("CB_SCOPE", "_default"),
+            # Wagtail's tree-management migrations issue SELECTs whose column
+            # references include reserved words like `path`, which N1QL rejects
+            # with error 3000. Tests need migrate to complete so collections
+            # exist, so opt the test harness into the legacy fail-soft behavior.
+            # Library default remains fail-closed; production users opt in only
+            # if their migrations rely on this.
+            "GRACEFUL_QUERY_ERRORS": True,
         },
     }
 }
