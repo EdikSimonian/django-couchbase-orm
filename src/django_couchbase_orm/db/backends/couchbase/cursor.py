@@ -790,8 +790,10 @@ class CouchbaseCursor:
                     self._rowcount = 0
                     return
 
-            # Optional fail-soft for SELECT errors. Disabled by default since
-            # treating syntax errors as "no rows" hides real bugs. Enable with
+            # Optional fail-soft for SELECT errors and for data-migration UPDATEs
+            # that reference Django's placeholder ``None()`` function (e.g.
+            # Wagtail tree migrations). Disabled by default since treating
+            # syntax errors as "no rows" hides real bugs. Enable with
             # OPTIONS["GRACEFUL_QUERY_ERRORS"]=True only if running data
             # migrations that intentionally produce some unsupported queries.
             #   3000 = N1QL syntax error
@@ -799,7 +801,10 @@ class CouchbaseCursor:
             if (
                 self._graceful_query_errors
                 and err_code in ("3000", "4210")
-                and n1ql.strip().upper().startswith("SELECT")
+                and (
+                    n1ql.strip().upper().startswith("SELECT")
+                    or "None(" in n1ql  # PostgreSQL-specific placeholder in data migrations
+                )
             ):
                 import logging
                 import re as _re_log

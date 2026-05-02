@@ -76,8 +76,13 @@ class DatabaseFeatures(BaseDatabaseFeatures):
     # at the SQL level, but the cursor's regex SQL rewriter has not been
     # exercised against the SQL Django emits for these features. Advertising
     # them as supported makes Django generate queries the rewriter mishandles.
-    # Re-enable each flag only after backend integration coverage lands.
-    supports_select_union = False
+    #
+    # supports_select_union is on because Wagtail's site-history admin
+    # (and other Django consumers) emit UNION queries that the cursor handles
+    # correctly today — the live wagtail_crud test suite is the integration
+    # coverage. The other flags below have no such coverage and stay off
+    # until each gets a tested rewrite path.
+    supports_select_union = True
     supports_select_intersection = False
     supports_select_difference = False
     supports_partial_indexes = False
